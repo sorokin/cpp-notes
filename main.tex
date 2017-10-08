@@ -1,0 +1,38 @@
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc} % common
+\usepackage[russian]{babel} % for russian lang
+
+\usepackage{hyperref} % for link
+\usepackage{graphicx} % for add picture
+%\usepackage{daytime} % for displaying version number and date
+\usepackage{datetime} % for current data
+\usepackage{indentfirst} % Красная строка
+\usepackage[usenames]{color} % for \textcolor
+\usepackage{minted} % for highlight
+
+\voffset=-20mm
+\textheight=220mm
+\hoffset=-25mm
+\textwidth=180mm
+
+\begin{document}
+    \begin{center}
+
+    {\Large \bf Лекция по С++ \#21} \\
+    \vspace{0.5em}
+    {\Large \bf Тема: smart\_ptr, value, pot} \\
+    \vspace{0.5em}
+    {\large Собрано {\today} в {\currenttime}}
+
+
+    \end{center}
+\underline{\hbox to 1\textwidth{{ } \hfil{ } \hfil{ } }}
+
+\tableofcontents
+
+\newpage
+\include{nullptr}
+\include{rvalue-references}
+
+\end{document}
