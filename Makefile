@@ -1,5 +1,5 @@
-MAIN_FILE_BASE:=main
-TEX?=pdflatex
+MAIN_FILE_BASE := main
+TEX_CMD ?= pdflatex
 
 define rm_all
 	rm -f	*.aux
@@ -10,8 +10,8 @@ endef
 
 ${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex nullptr.tex rvalue-references.tex
 	$(call rm_all)
-	${TEX}	-shell-escape ${MAIN_FILE_BASE}.tex
-	${TEX}	-shell-escape ${MAIN_FILE_BASE}.tex
+	${TEX_CMD} -shell-escape ${MAIN_FILE_BASE}.tex
+	${TEX_CMD} -shell-escape ${MAIN_FILE_BASE}.tex
 
 .PHONY: clean
 clean:
