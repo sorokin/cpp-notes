@@ -1,0 +1,160 @@
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc} % common
+\usepackage[russian]{babel} % for russian lang
+
+\usepackage{hyperref} % for link
+\usepackage{graphicx} % for add picture
+%\usepackage{daytime} % for displaying version number and date
+\usepackage{datetime} % for current data
+\usepackage{indentfirst} % Красная строка
+\usepackage[usenames]{color} % for \textcolor
+\usepackage{minted} % for highlight
+
+% seting size page
+\voffset=-20mm
+\textheight=220mm
+\hoffset=-25mm
+\textwidth=180mm
+
+\begin{document}
+
+    \begin{center}
+
+    {\Large \bf F.A.Q. для конспектов} \\
+    \vspace{0.5em}
+    {\large Собрано {\today} в {\currenttime}}
+
+    Эта статья призвана помочь писать конспекты и стандартизировать их написание. Я не буду рассказывать все о LaTeX. Я только опишу инструменты, которыми я советую пользоваться, и которых я надеюсь вам будет достаточно.
+
+
+    P. S. сложно добиться того, чтобы только из pdf получилась понятная статья, поэтому это статья-пример, которой следует пользоваться так: смотрим код, потом смотрим во что это компилируется.
+
+    \end{center}
+\underline{\hbox to 1\textwidth{{ } \hfil{ } \hfil{ } }}
+
+\tableofcontents
+
+\newpage
+
+\section{Установка LaTeX}
+
+\subsection{Linux}
+
+Вам нужно установить:
+\begin{enumerate}
+    \item texlive-live - сам LaTeX
+    \item minted - для вставки исходного кода
+    \item pygment - для minted
+\end{enumerate}
+
+
+\textcolor{red}{NB}) Для сборки tex-файла нужно указывать в командной строке флаг \textbf(--shell-escape)
+
+
+\textcolor{red}{NB}) \href{http://tug.ctan.org/macros/latex/contrib/minted/minted.pdf}{Документация для minted}
+
+\subsection{Win}
+    TODO
+\section{Работа с Git}
+Для того, чтобы работать над конспектом необходимо использовать git. Поэтому я привел несколько ситуации, в которые вы неизбежно попадете.
+
+
+{\bf Суть:} \url{https://github.com/sorokin/cpp-notes.git} - это основной репрезиторий, на котором лежит релиз конспекта. Чтобы редактировать или создавать статьи, нужно копировать его к себе на git ({\bf forked}), а потом залить в основной репрезиторий ({\bf pull request}).
+	\subsection{Начало работы с основным репрезиторем}
+	\begin{enumerate}
+	\item сделать fork: на \href{https://github.com/sorokin/cpp-notes}{странице} основного репрезитория  вверху справа будет нужная кнопка. (рядом с "Watch"\ )
+
+
+	Теперь ответвление репрезитория будет у вас на гите. Вы просто работает с ним как со своим.
+	\item делаем clone на свой компьютер:
+	\begin{minted}{bash}
+	git clone git://github.com/my_name/cpp-notes.git
+	\end{minted}
+	\end{enumerate}
+	\subsection{Работа с ответвлением}
+	 Тут все просто: меняем, делаем коммит, потом push. Ведь это ваш репрезиторий.
+
+
+	\textcolor{red}{NB}) Для тех, кому не все просто, отправляю учить \href{https://git-scm.com/book/ru/v1}{основы git}
+	\subsection{Залив в основной репрезиторий}
+	Сначала нужно залить все изменения на свой git. Потом нужно кнопку \textbf{New pull request} и после этого ваши изменения предложатся создателю репрезетория.
+
+	\subsection{Добавление изменений основного репрезитория в ваш}
+	Рассмотрим такую ситуацию: вы работаете над статьей. И в это время, кто-то меняет основной репрезиторий. Как вам получить эти изменения и не потерять то, что вы уже сделали?
+	Решение:
+	\begin{minted}[breaklines]{bash}
+	git remote add sorokin "https://github.com/sorokin/cpp-notes.git" # добавим основной репрезиторий в remote
+	git remote -v # убедимся, что он добавился в remote
+	git fetch sorokin # сделаем из него ветку
+	git branch -v # убедимся, что появилась новая ветка со всем нужными нами изменениями
+	git merge sorokin/master #сливаемся с новой веткой
+	git push # заливаем все на нас сервер
+	\end{minted}
+
+
+\textcolor{red}{NB}) После того, как мы получили ветку основного репрезитория, мы можем делать с ней все, что хотим. В принципе, можно делать rebase.
+
+
+\textcolor{red}{NB}) Если кто не силен в ветвлении, смотрите все туже \href{https://git-scm.com/book/ru/v1}{книгу}.
+\section{LaTeX}
+	TODO
+
+\subsection{Структура}
+
+\begin{enumerate}
+    \item Когда вы пишите статью, лучше всего делить ее на секции и подсекции, которые потом будут отражаться в оглавлении. Чем лучше структурирован текст, тем проще ориентироваться в оглавлении.
+\end{enumerate}
+
+\subsection{Вставка кода}
+
+Для вставки исходного кода можно использовать разные средства. Я остановился на \textbf{minted}. Мне показалось, что это очень удобная и красивая библиотека. Перейдем к примерам:
+
+
+Вставим код:
+\begin{minted}{c++}
+
+    #include <iostream>
+
+    using namespace std;
+
+    int main() {
+        cout << "Hello, world!" << endl;
+
+        return 0;
+    }
+\end{minted}
+
+Хорошо теперь наведем порядок, написав преамбулу.
+
+\begin{minted}
+    [linenos, % нумерация строк
+     frame=lines, framesep=2mm, % черта сверху и снизу
+     tabsize = 4, % размер табуляции
+      breaklines % перенос текста
+      ]{c++}
+
+    #include <iostream>
+
+    using namespace std;
+
+    int main() {
+        cout << "Hello, world!" << endl; // comment
+        return 0;
+    }
+\end{minted}
+
+Также можно вставлять код прямо в с текст \mintinline{c++}{std::shared_ptr; // smart pointer }. И я рекомендую делать именно так.
+
+
+\textcolor{red}{NB}) Есть различные стили кода, но стандартная вроде не плоха.
+
+\subsection{Вставка ссылок и гиперссылок}
+
+\href{http://blog.harrix.org/article/661#h2_2}{Вот статья на эту тему)}
+
+\section{Советы и пожелания}
+ TODO
+
+
+\end{document}
