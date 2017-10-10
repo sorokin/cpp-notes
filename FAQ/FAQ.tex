@@ -1,0 +1,116 @@
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc} % common
+\usepackage[russian]{babel} % for russian lang
+
+\usepackage{hyperref} % for link
+\usepackage{graphicx} % for add picture
+%\usepackage{daytime} % for displaying version number and date
+\usepackage{datetime} % for current data
+\usepackage{indentfirst} % Красная строка
+\usepackage[usenames]{color} % for \textcolor
+\usepackage{minted} % for highlight
+
+% seting size page
+\voffset=-20mm
+\textheight=220mm
+\hoffset=-25mm
+\textwidth=180mm
+
+\begin{document}
+    \begin{center}
+
+    {\Large \bf F.A.Q. для конспектов} \\
+    \vspace{0.5em}
+    {\large Собрано {\today} в {\currenttime}}
+
+    Эта статья призвана помочь писать конспекты и стандартизировать их написания. Я не буду рассказвать все о LaTeX я только опишу инструменты, которыми стоит советую пользоваться, и которых я надеюсь вам будет достаточно.
+
+
+    P. S. сложно добиться того, чтобы только из pdf получилась понятная статья, поэтому это статья-пример, которой слудует пользоваться так: смотрим код, потом смотрим во что это компилируется.
+
+    \end{center}
+\underline{\hbox to 1\textwidth{{ } \hfil{ } \hfil{ } }}
+
+\tableofcontents
+
+\newpage
+
+\section{Установка LaTeX}
+
+\subsection{Linux}
+
+Вам нужно установить:
+\begin{enumerate}
+    \item texlive-live - сам LaTeX
+    \item minted - для вставки исходного кода
+    \item pygment - для minted
+
+\textcolor{red}{NB}) Для сборки tex-файла нужно указывать в командной строке флаг \textbf(--shell-escape)
+\end{enumerate}
+
+\subsection{Win}
+    TODO
+\section{Работа с Git}
+	\subsection{Начало работы с основным репрезиторем}
+	TODO
+	\subsection{Обновление локальной копии основного репрезитория}
+	TODO
+	\subsection{Залив в основной репрезиторий}
+	TODO
+\section{LaTeX}
+	TODO
+
+\subsection{Структура}
+
+\begin{enumerate}
+    \item Когда вы пишите статью, лучше всего делить ее на секции и подсекции, которые потом будут отражаться в оглавлении. Чем лучше структурирован текст, тем проще ориентироваться в оглавлении.
+\end{enumerate}
+
+\subsection{Вставка кода}
+
+Для вставки исходного кода можно искользовать разные средства. Я остановился на \textbf{minted}. Мне показалось, что это очень удобная и красивая библиотека. Перейдем к примерам:
+
+
+Вставим код:
+\begin{minted}{c++}
+
+    #include <iostream>
+
+    using namespace std;
+
+    int main() {
+        cout << "Hello, world!" << endl;
+
+        return 0;
+    }
+\end{minted}
+
+Хорошо теперь наведем порядок, написав преамбулу.
+
+\begin{minted}
+    [linenos, % нумерация строк
+     frame=lines, framesep=2mm, % черта сверху и снизу
+     tabsize = 4, % размер табуляции
+      breaklines % перенос текста
+      ]{c++}
+
+    #include <iostream>
+
+    using namespace std;
+
+    int main() {
+        cout << "Hello, world!" << endl; // comment
+        return 0;
+    }
+\end{minted}
+
+Также можно вставлять код прямо в с текст \mintinline{c++}{std::shared_ptr; // smart pointer }. И я рекомендую делать именно так.
+
+
+\textcolor{red}{NB}) Есть различные стили кода, но стандартная вроде не плоха.
+\section{Советы и пожелания}
+ TODO
+
+
+\end{document}
