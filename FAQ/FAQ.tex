@@ -18,6 +18,7 @@
 \textwidth=180mm
 
 \begin{document}
+
     \begin{center}
 
     {\Large \bf F.A.Q. для конспектов} \\
@@ -45,19 +46,57 @@
     \item texlive-live - сам LaTeX
     \item minted - для вставки исходного кода
     \item pygment - для minted
+\end{enumerate}
+
 
 \textcolor{red}{NB}) Для сборки tex-файла нужно указывать в командной строке флаг \textbf(--shell-escape)
-\end{enumerate}
+
+
+\textcolor{red}{NB}) \href{http://tug.ctan.org/macros/latex/contrib/minted/minted.pdf}{Документация для minted}
 
 \subsection{Win}
     TODO
 \section{Работа с Git}
+Для того, чтобы работать над конспектом необходимо использовать git. Поэтому я привел несколько ситуации, в которые вы неизбежно попадете.
+
+
+{\bf Суть:} \url{https://github.com/sorokin/cpp-notes.git} - это основной перезиторий, на котором лежит релиз конспекта. Чтобы редактировать или создавать статьи, нужно копировать его к себе на git ({\bf forked}), а потом залить в основной реперезиторий ({\bf pull request}).
 	\subsection{Начало работы с основным репрезиторем}
-	TODO
-	\subsection{Обновление локальной копии основного репрезитория}
-	TODO
+	\begin{enumerate}
+	\item сделать fork: на \href{https://github.com/sorokin/cpp-notes}{странице} основного репезитория  вверху справа будет нужная кнопка. (рядом с "Watch"\ )
+	
+	
+	Теперь ответвление репезитория будет у вас на гите. Вы просто работает с ним как со своим.
+	\item делаем clone на свой компьютер: 
+	\begin{minted}{bash}
+	git clone git://github.com/my_name/cpp-notes.git
+	\end{minted}	
+	\end{enumerate}
+	\subsection{Работа с ответвлением}
+	 Тут все просто: меняем, делаем коммит, потом push. Ведь это ваш репезиторий.
+
+	
+	\textcolor{red}{NB}) Для тех, кому не все просто, отправляю учить \href{https://git-scm.com/book/ru/v1}{основы git}
 	\subsection{Залив в основной репрезиторий}
-	TODO
+	Сначала нужно залить все изменения на свой git. Потом нужно кнопку \textbf{New pull request} и после этого ваши изменения предложатся создателю репезетория.
+	
+	\subsection{Добавление изменений основного репезитория в ваш}
+	Рассмотрим такую ситацию: вы работаете над статьей. И в это время, кто-то меняет основной репезиторий. Как вам получить эти изменения и не потерять то, что вы уже сделали?
+	Решение:
+	\begin{minted}[breaklines]{bash}
+	git remote add sorokin "https://github.com/sorokin/cpp-notes.git" # добавим основной репрезиторий в remote
+	git remote -v # убедимся, что он добавился в remote
+	git fetch sorokin # сделаем из него ветку
+	git branch -v # убедимся, что появилась новая ветка со всем нужными нами изменениями
+	git merge sorokin/master #сливаемся с новой веткой
+	git push # заливаем все на нас сервер
+	\end{minted}
+	
+	
+\textcolor{red}{NB}) После того, как мы получили ветку основного репезитория, мы можем делать с ней все, что хотим. В принципе, можно делать rebase.
+
+
+\textcolor{red}{NB}) Если кто не силен в ветвлении, смотрите все туже \href{https://git-scm.com/book/ru/v1}{книгу}.
 \section{LaTeX}
 	TODO
 
@@ -109,6 +148,11 @@
 
 
 \textcolor{red}{NB}) Есть различные стили кода, но стандартная вроде не плоха.
+
+\subsection{Вставка ссылок и гипер ссылок}
+
+\href{http://blog.harrix.org/article/661#h2_2}{Вот статья на эту тему)}
+
 \section{Советы и пожелания}
  TODO
 
