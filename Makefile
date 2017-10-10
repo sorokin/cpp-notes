@@ -10,9 +10,9 @@ endef
 
 ${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex nullptr.tex rvalue-references.tex
 	$(call rm_all)
-	${TEX}	-shell-escape ${MAIN_FILE_BASE}.tex
-	${TEX}	-shell-escape ${MAIN_FILE_BASE}.tex
-
+	${TEX}	--shell-escape ${MAIN_FILE_BASE}.tex
+	${TEX}	--shell-escape ${MAIN_FILE_BASE}.tex
+#pdflatex -synctex=1 -interaction=nonstopmode  --shell-escape  main.tex
 .PHONY: clean
 clean:
 	$(call rm_all)
