@@ -13,7 +13,7 @@ $ make
 ```
 
 After executing these commands two files will be build:
-* main.pdf &mdash; the notes itself
-* how-to-contribute.pdf &mdash; a detailed contributor guide
+* `main.pdf` &mdash; the notes itself
+* `how-to-contribute.pdf` &mdash; a detailed contributor guide
 
-For more details, please refer to how-to-contribute.pdf.
+For more details, please refer to `how-to-contribute.pdf`.
