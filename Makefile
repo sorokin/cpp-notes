@@ -8,7 +8,7 @@ define rm_all
 	rm -rf	_minted-${MAIN_FILE_BASE}
 endef
 
-${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex nullptr.tex rvalue-references.tex
+${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex compilation.tex nullptr.tex rvalue-references.tex
 	$(call rm_all)
 	${TEX_CMD} --shell-escape ${MAIN_FILE_BASE}.tex
 	${TEX_CMD} --shell-escape ${MAIN_FILE_BASE}.tex
