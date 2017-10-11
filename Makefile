@@ -10,8 +10,8 @@ endef
 
 ${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex nullptr.tex rvalue-references.tex
 	$(call rm_all)
-	${TEX_CMD} -shell-escape ${MAIN_FILE_BASE}.tex
-	${TEX_CMD} -shell-escape ${MAIN_FILE_BASE}.tex
+	${TEX_CMD} --shell-escape ${MAIN_FILE_BASE}.tex
+	${TEX_CMD} --shell-escape ${MAIN_FILE_BASE}.tex
 
 .PHONY: clean
 clean:
