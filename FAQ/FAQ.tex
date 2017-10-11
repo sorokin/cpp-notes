@@ -3,12 +3,16 @@
 \usepackage[utf8]{inputenc} % common
 \usepackage[russian]{babel} % for russian lang
 
-\usepackage{hyperref} % for link
 \usepackage{graphicx} % for add picture
 %\usepackage{daytime} % for displaying version number and date
 \usepackage{datetime} % for current data
-\usepackage{indentfirst} % Красная строка
+\usepackage{indentfirst} % Красkная строка
 \usepackage[usenames]{color} % for \textcolor
+\usepackage{xcolor}
+\usepackage{hyperref} % for link
+\definecolor{linkcolor}{HTML}{799B03} % цвет ссылок
+\definecolor{urlcolor}{HTML}{799B03} % цвет гиперссылок
+\hypersetup{colorlinks=true,  linkcolor=linkcolor, urlcolor=urlcolor,}
 \usepackage{minted} % for highlight
 
 % seting size page
@@ -151,7 +155,16 @@
 
 \subsection{Вставка ссылок и гиперссылок}
 
-\href{http://blog.harrix.org/article/661#h2_2}{Вот статья на эту тему)}
+ \href{http://blog.harrix.org/article/661#h2_2}{Вот статья на эту тему)}
+
+
+ \url{http://www-sbras.nsc.ru/win/docs/TeX/LaTex2e/hyperref_options.pdf}
+
+ Вот так можно вставлять ссылки.
+
+
+Также желательно их подсветить в нормальные цвета, что я и сделал в этом документе. Но эти свойства будут прописываться в main.tex, поэтому можно об этом не волноваться.
+
 
 \section{Советы и пожелания}
  TODO
