@@ -63,3 +63,91 @@ g++ -Isome/directory -Ianother/directory -I../and/another/one myfile.cpp
 \item \#pragma
 \item \#undef
 \end{enumerate}
+
+Рассмотрим директиву {\bf \#define} на примере:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define PI 3.14159265
+
+double circumference(double r)
+{
+    return 2 * PI * r;
+}
+\end{minted}
+Здесь директива {\bf \#define} определяет макрос с именем {\bf PI}. Текст, который идет после имени макроса, называется replacement'ом. Replacement отделяется от имени макроса пробелом и распростроняется до конца строки. Все вхождения идентификатора {\bf PI} ниже этой директивы будут заменены на replacement. Результатом препроцессирования примера выше является следующий текст:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+double circumference(double r)
+{
+    return 2 * 3.14159265 * r;
+}
+\end{minted}
+
+Приведенная выше форма директивы {\bf \#define} называется object-like. Существует вторая форма этой директивы, называемая function-like:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define MIN(x, y) x < y ? x : y
+
+printf("%d", MIN(4, 5));
+\end{minted}
+Результатом препроцессирования этого фрагмента кода является:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+printf("%d", 4 < 5 ? 4 : 5);
+\end{minted}
+
+Важно знать, что препроцессор, выполняя подстановки макросов, ничего не знает про приоритет арифметических операций и синтаксическую структуру программы. Рассмотрим следующую программу:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define MIN(x, y) x < y ? x : y
+
+int main()
+{
+    printf("%d", 10 + MIN(4, 5));
+}
+\end{minted}
+Данная программа выводит {\bf 5}, тогда как скорее всего программист ожидал вывода {\bf 14}. Дело в том, что после раскрытия макроса возникает выражение {\bf 10 + 4 < 5 ? 4 : 5}. Поскольку бинарный {\bf +} имеет приоритет выше, чем у тернарного оператора, данное выражение разбирается транслятором как {\bf (10 + 4) < 5 ? 4 : 5}, а не {\bf 10 + (4 < 5 ? 4 : 5)}, как мог ожидать программист, использующий макрос. Чтобы избегать подобных проблем, у function-like макросов, которые раскрываются в выражение, replacement следует брать в скобки. По той же причине имена параметров макроса в replacement, следует брать в скобки. Корректный макрос {\bf MIN} мог бы выглядеть следующим образом:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+\end{minted}
+
+Директива {\bf define} позволяет определять макросы повторно, при этом, в каждой точке программы силу имеет последний {\bf define} данного макроса:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+X
+#define X foo
+X
+#define X bar
+X
+\end{minted}
+раскрывается в:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+X
+foo
+bar
+\end{minted}
+
+Replacement макроса не препроцессируется при определении макроса, но результат раскрытия макроса препроцессируется повторно:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define Y foo
+#define X Y
+#define Y bar
+X                   // раскрывается в bar
+\end{minted}
+
+Что произойдет если replacement макроса {\bf M} будет содержать использование макроса {\bf M}? В этом случае возникает рекурсия. По спецификации препроцессор никогда не должен раскрывать макрос {\bf M} изнутри самого себя, а оставлять вложенный идентификатор как есть:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define M { M }
+M                   // раскрывается в { M } один раз, второй раз M не раскрывается
+\end{minted}
+
+Ещё пример:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define A a{ B }
+#define B b{ C }
+#define C c{ A }
+A
+B
+C
+\end{minted}
+Результат препроцессирования:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+a{ b{ c{ A } } }
+b{ c{ a{ B } } }
+c{ a{ b{ C } } }
+\end{minted}
