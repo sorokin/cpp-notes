@@ -1,0 +1,65 @@
+\section{Препроцессирование}
+
+Препроцессирование получает на вход .cpp файл и выдает на выход .i файл. Препроцессирование выполняется программой называемой препроцессор.
+
+Препроцессор проходит по входному файлу, копируя текст в выходной файл. Если он встречает строку начинающуются с символа {\bf \#}, он выполняет команду, которая записана после {\bf \#}. Такие команды называются директивами препроцессора.
+
+Примером директивы препроцессора является директива {\bf \#include}.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#include "somefile.h"
+\end{minted}
+
+Когда препроцесор встречает эту директиву, он подставляет на её место текст файла {\bf somefile.h}. При этом текст файла {\bf somefile.h} тоже препроцессируется. Если в нём есть какие-то директивы то они будут выполнены.
+
+Пусть даны следующие файлы
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// print.h
+void print(char const*);
+
+// main.cpp
+#include "print.h"
+
+int main()
+{
+    print("Hello, world");
+}
+\end{minted}
+Результатом препроцессирования {\bf main.cpp} будет:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void print(char const*);
+
+int main()
+{
+    print("Hello, world");
+}
+\end{minted}
+В этом можно убедиться выполним команду {\bf g++ -E main.cpp}. Ключ {\bf -E} говорит драйверу, что нужно лишь отпрепроцессировать входной файл.
+
+Директива {\bf \#include} имеет две формы
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#include <somefile.h>
+#include "somefile.h"
+\end{minted}
+
+Первая форма ищет файл {\bf somefile.h} в списке каталогов, называемых include directories. Их можно указать компилятору опцией {\bf -I}. Например:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{sh}
+g++ -Isome/directory -Ianother/directory -I../and/another/one myfile.cpp
+\end{minted}
+Файлы ищутся в этих директориях слева направо. Препроцессор автоматически добавляет в конец этого списка пути к директориям в которых лежат хедера стандартной библиотеки.
+
+Вторая форма директивы {\bf \#include} ищет {\bf somefile.h} сначала в текущем каталоге, а потом в include directories.
+
+В стандарте определены следующие директивы препроцессора:
+\begin{enumerate}
+\item \#define
+\item \#elif
+\item \#else
+\item \#error
+\item \#endif
+\item \#if
+\item \#ifdef
+\item \#ifndef
+\item \#include
+\item \#pragma
+\item \#undef
+\end{enumerate}
