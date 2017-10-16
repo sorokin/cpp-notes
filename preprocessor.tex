@@ -151,3 +151,65 @@ a{ b{ c{ A } } }
 b{ c{ a{ B } } }
 c{ a{ b{ C } } }
 \end{minted}
+
+Директива {\bf \#undef} позволяет разопределить макрос, определенный ранее с помощью директивы {\bf \#define}. Пример:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+X
+#define X foo
+X
+#undef X
+X
+\end{minted}
+Результат препроцессирования:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+X
+foo
+X
+\end{minted}
+
+Директивы {\bf \#ifdef}, {\bf \#ifndef}, {\bf \#if}, {\bf \#else}, {\bf \#elif}, {\bf \#endif} позволяют отпрепроцессировать часть файла, лишь при определенном условии. Директивы {\bf \#ifdef}, {\bf \#ifndef} проверяют определен ли указанный макрос. Например:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#ifdef __x64_64__
+typedef unsigned long uint64_t;
+#else
+typedef unsigned long long uint64_t;
+#endif
+\end{minted}
+
+Директива \#if позволяет проверить произвольное арифметическое выражение.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define TWO 2
+#if TWO + TWO == 4
+// ...
+#endif
+\end{minted}
+Директива {\bf \#if} препроцессирует свой аргумент, а затем парсит то, что получилось как арифметическое выражение. Если после препроцессирования в аргументе {\bf \#if} остаются идентификаторы, то они заменяются на 0, кроме идентификатора {\bf true}, который заменяется на 1.
+
+Директива {\bf \#error} обрывает препроцессирование с ошибкой. Ей можно указать сообщение которое будет показано в ошибке. Например:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#if __BYTE_ORDER == __BIG_ENDIAN
+// ...
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+// ...
+#else
+#error unknown endianness
+#endif
+\end{minted}
+
+\subsection{Лучшие практики}
+Основной сложностью при использовании макросов препроцессора является то, что препроцессор оперирует на уровне токенов, не зная ничего про контекст где макрос раскрывается. Предположим, что определен макрос {\bf errno}, а где-то ниже программист пытается определить локальную переменную {\bf errno}.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define errno (*errno_location())
+
+int process()
+{
+    int errno = 0;
+}
+\end{minted}
+Результатом препроцессирования этого фрагмента будет:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int process()
+{
+    int (*errno_location()) = 0;
+}
+\end{minted}
