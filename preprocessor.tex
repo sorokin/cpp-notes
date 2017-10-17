@@ -4,8 +4,28 @@
 
 Препроцессор проходит по входному файлу, копируя текст в выходной файл. Если он встречает строку начинающуются с символа {\bf \#}, он выполняет команду, которая записана после {\bf \#}. Такие команды называются директивами препроцессора.
 
-Примером директивы препроцессора является директива {\bf \#include}.
+\subsection{Директивы препроцессора}
+
+Существуют следующие директивы препроцессора:
+\begin{enumerate}
+\item \#define
+\item \#elif
+\item \#else
+\item \#error
+\item \#endif
+\item \#if
+\item \#ifdef
+\item \#ifndef
+\item \#include
+\item \#pragma
+\item \#undef
+\end{enumerate}
+
+\subsubsection{Директива \#include}
+
+Директива {\bf \#include} имеет две формы
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#include <somefile.h>
 #include "somefile.h"
 \end{minted}
 
@@ -35,34 +55,15 @@ int main()
 \end{minted}
 В этом можно убедиться выполним команду {\bf g++ -E main.cpp}. Ключ {\bf -E} говорит драйверу, что нужно лишь отпрепроцессировать входной файл.
 
-Директива {\bf \#include} имеет две формы
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-#include <somefile.h>
-#include "somefile.h"
-\end{minted}
-
-Первая форма ищет файл {\bf somefile.h} в списке каталогов, называемых include directories. Их можно указать компилятору опцией {\bf -I}. Например:
+Форма {\bf \#include <somefile.h>} производит поиск файла {\bf somefile.h} в списке каталогов, называемых include directories. Их можно указать компилятору опцией {\bf -I}. Например:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{sh}
 g++ -Isome/directory -Ianother/directory -I../and/another/one myfile.cpp
 \end{minted}
 Файлы ищутся в этих директориях слева направо. Препроцессор автоматически добавляет в конец этого списка пути к директориям в которых лежат хедера стандартной библиотеки.
 
-Вторая форма директивы {\bf \#include} ищет {\bf somefile.h} сначала в текущем каталоге, а потом в include directories.
+Форма {\bf \#include ``somefile.h''} производит поиск файла {\bf somefile.h} сначала в текущем каталоге, а потом в include directories.
 
-В стандарте определены следующие директивы препроцессора:
-\begin{enumerate}
-\item \#define
-\item \#elif
-\item \#else
-\item \#error
-\item \#endif
-\item \#if
-\item \#ifdef
-\item \#ifndef
-\item \#include
-\item \#pragma
-\item \#undef
-\end{enumerate}
+\subsubsection{Директива \#define}
 
 Рассмотрим директиву {\bf \#define} на примере:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
@@ -152,6 +153,8 @@ b{ c{ a{ B } } }
 c{ a{ b{ C } } }
 \end{minted}
 
+\subsubsection{Директива \#undef}
+
 Директива {\bf \#undef} позволяет разопределить макрос, определенный ранее с помощью директивы {\bf \#define}. Пример:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 X
@@ -166,6 +169,8 @@ X
 foo
 X
 \end{minted}
+
+\subsubsection{Семейство директив \#if}
 
 Директивы {\bf \#ifdef}, {\bf \#ifndef}, {\bf \#if}, {\bf \#else}, {\bf \#elif}, {\bf \#endif} позволяют отпрепроцессировать часть файла, лишь при определенном условии. Директивы {\bf \#ifdef}, {\bf \#ifndef} проверяют определен ли указанный макрос. Например:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
@@ -184,6 +189,8 @@ typedef unsigned long long uint64_t;
 #endif
 \end{minted}
 Директива {\bf \#if} препроцессирует свой аргумент, а затем парсит то, что получилось как арифметическое выражение. Если после препроцессирования в аргументе {\bf \#if} остаются идентификаторы, то они заменяются на 0, кроме идентификатора {\bf true}, который заменяется на 1.
+
+\subsubsection{Директива \#error}
 
 Директива {\bf \#error} обрывает препроцессирование с ошибкой. Ей можно указать сообщение которое будет показано в ошибке. Например:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
