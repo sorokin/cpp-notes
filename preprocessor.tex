@@ -196,8 +196,8 @@ typedef unsigned long long uint64_t;
 #endif
 \end{minted}
 
-\subsection{Лучшие практики}
-Основной сложностью при использовании макросов препроцессора является то, что препроцессор оперирует на уровне токенов, не зная ничего про контекст где макрос раскрывается. Предположим, что определен макрос {\bf errno}, а где-то ниже программист пытается определить локальную переменную {\bf errno}.
+\subsection{Проблемы при использовании препроцессора}
+Основной сложностью\footnote{\url{http://www.stroustrup.com/bs_faq2.html\#macro} --- см. также FAQ Бьярна Страуструпа на тему, почему макросы это плохо.} при использовании макросов препроцессора является то, что препроцессор оперирует на уровне токенов, не зная ничего про контекст где макрос раскрывается. Предположим, что определен макрос {\bf errno}, а где-то ниже программист пытается определить локальную переменную {\bf errno}.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 #define errno (*errno_location())
 
@@ -213,3 +213,80 @@ int process()
     int (*errno_location()) = 0;
 }
 \end{minted}
+Как мы видим получившийся в результате препроцессирования фрагмент не объявляет переменную {\bf errno}. Этот фрагмент не объявляется вообще никакую переменную. В данном конкретном случае программист получит ошибку трансляции:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+errno.cpp:5:17: error: function ‘int* errno_location()’ is initialized like a variable
+     int errno = 0;
+                 ^
+\end{minted}
+Сообщение об ошибке ссылается на некоторую функцию {\bf int* errno\_location()}, которая в пользовательском коде не упоминается. Такие ошибки могут быть запутывающими. При использовании библиотек, которые определяют много макросов с короткими именами это может доставлять неудобство, поскольку эти имена становиться невозможно использовать ни под что другое.
+
+Второй проблемой при использовании пропроцессора является то, что отладчик ничего не знает про раскрытые макросы. Независимо от того, сколько кода пришло из макроса, отладчик будет работать как будто весь этот код написан в одной строке. Поэтому, как правило, в коде активно использующем макросы, сложно работать с отладчиком.
+
+\subsection{Советы и лучшие практики}
+\subsubsection{Предпочитайте альтернативы}
+
+В связи с расширение языка, сейчас возможно использовать обычные языковые конструкции, там где раньше использовался препроцессор. Например, изначально препроцессор использовался для того, чтобы определять константы:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define BUFF_SIZE 10240
+\end{minted}
+
+Без использования препроцессора эту константу возможно объявить как:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+size_t const BUFF_SIZE = 10240;
+\end{minted}
+
+Аналогично function-like макросы часто можно заменить на inline-функции:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define STREQ(s1, s2) (strcmp((s1), (s2)) == 0)
+\end{minted}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+bool streq(char const* s1, char const* s2)
+{
+    return strcmp(s1, s2) == 0;
+}
+\end{minted}
+
+В случае когда типы аргументов могут быть различными возможно использование шаблонов:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+\end{minted}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <class T>
+T const& min(T const& x, T const& y)
+{
+    return x < y ? x : y;
+}
+\end{minted}
+
+\subsubsection{Своевременно undef-айнте макросы}
+
+Если макрос предназначен лишь для использования внутри одной функции не забудьте его undef-айнуть по завершению этой функции:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+enum color
+{
+    red,
+    green,
+    blue,
+    // ...
+};
+
+char const* color_name(color c)
+{
+    switch (c)
+    {
+#define CASE(name) case name: return #name
+        CASE(red);
+        CASE(green);
+        CASE(blue);
+        // ...
+#undef CASE
+    }
+}
+\end{minted}
+
+\subsubsection{Избегайте коротких имен}
+
+Если необходимо объявить глобально доступный макрос, подберите ему такое имя, которое маловероятно приведет к колизии. {\bf GTK\_MAJOR\_VERSION} --- пример хорошего имени макроса. {\bf min}, {\bf check}, {\bf tmp}, {\bf out} --- примеры плохих имен.
