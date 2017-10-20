@@ -203,6 +203,107 @@ typedef unsigned long long uint64_t;
 #endif
 \end{minted}
 
+\subsubsection{Директива \#pragma}
+
+Директива {\bf \#pragma} это директива поведение, которой может быть определено каждым компилятором по своему (implementation-defined behavior). То, какие формы директивы {\bf \#pragma} поддерживает конкретный компилятор, можно узнать в документации. Например, компилятор Microsoft Visual C++ поддерживает 41\footnote{\url{https://msdn.microsoft.com/en-us/library/d9x1s805.aspx}} вид разных прагм.
+
+Наиболее широко используемой прагмой является {\bf \#pragma once}, рассмотренная в разделе \ref{pragma_once}.
+
+\subsection{Защита от повторного включения}
+
+При препроцессировании директива {\bf \#include} заменяется на текст указаного хедер-файла. Повторное включение хедер файл может привести к тому, что декларации во втором включении конфликтуют с декларациями в первом включении. Рассмотрим следующую программу:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// mytype.h
+struct mytype
+{
+    int abc;
+};
+
+// somefile.cpp
+#include "mytype.h"
+#include "mytype.h"
+\end{minted}
+
+Препроцессирование {\bf somefile.cpp} выдаёт следующий результат:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct mytype
+{
+    int abc;
+};
+
+struct mytype
+{
+    int abc;
+};
+\end{minted}
+
+Компиляция {\bf somefile.cpp} ожидаемо приводит к ошибке:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+In file included from somefile.cpp:2:0:
+mytype.h:1:8: error: redefinition of ‘struct mytype’
+ struct mytype
+        ^~~~~~
+In file included from somefile.cpp:1:0:
+mytype.h:1:8: error: previous definition of ‘struct mytype’
+ struct mytype
+        ^~~~~~
+\end{minted}
+
+Как видно из ошибки структура {\bf mytype} сконфликтовала с собой же.
+
+В данной ситуации можно было бы посоветовать не инклудить хедер дважды. Однако это не всегда легко сделать. Предположим, что существует два хедера {\bf a.h} и {\bf b.h}, которые используют {\bf mytype} из {\bf mytype.h}, а файл {\bf somefile.cpp} использует оба хедера {\bf a.h} и {\bf b.h}. Следует ли в {\bf a.h} и в {\bf b.h} инклудить {\bf mytype.h}? Если ответить на этот вопрос положительно, то это приведет к аналогичной ошибке, за тем лишь исключением, что {\bf mytype.h} инклудиться не напрямую в {\bf somefile.cpp}, а косвенно --- первый раз через {\bf a.h}, второй --- через {\bf b.h}. Если ответить на этот вопрос отрицательно, то каждый пользователь файлов {\bf a.h} будет обязан перед инклудом {\bf a.h} проинклудить {\bf mytype.h}. Для одного хедер-файла это может показаться приемлемым, однако, если программа состоит из сотен хедеров, каждый требующий десятки других хедеров, этот подход становится неприемлемым.
+
+Решением данной проблемы является написание хедера таким образом, что его возможно включать несколько раз и это не приводит к ошибке. Один возможный способ это сделать показан на следующем примере:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// mytype.h
+#ifndef MYTYPE_H
+#define MYTYPE_H
+
+struct mytype
+{
+    int abc;
+};
+
+#endif
+\end{minted}
+
+Такая тройка директив {\bf \#ifndef}, {\bf \#define}, {\bf \#endif} называется {\bf include guard'ом}. При включении файла первый раз макрос {\bf MYTYPE\_H} неопределен, поэтому текст файла будет подставлен, а макрос {\bf MYTYPE\_H} станет определен. При повторном включении макрос {\bf MYTYPE\_H} уже определен и содержимое файла пропускается.
+
+При использовании include guard'ов важно, чтобы макрос, который проверяется и определяется был уникальный для каждого файла. Обычно для этого используют имя макроса образованное от имени файла.
+
+\subsubsection{\#pragma once}
+\label{pragma_once}
+Вторым способом защитить файл от повторного включения является использование директивы {\bf \#pragma once}:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// mytype.h
+#pragma once
+
+struct mytype
+{
+    int abc;
+};
+
+// somefile.cpp
+#include "mytype.h"
+#include "mytype.h"
+\end{minted}
+
+Директива {\bf \#pragma once} говорит препроцессору, что текст файла следует подставлять лишь при первом включение. Препроцессирование {\bf somefile.cpp} из примера выше выдаёт:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct mytype
+{
+    int abc;
+};
+\end{minted}
+
+Преимуществом использования {\bf \#pragma once} по сравнению с include guard является то, что не требуется изобретать новое имя макроса для каждого нового файла. Это исключает ошибку в случае если макросы совпадут для разных файлов.
+
+Недостатком использования {\bf \#pragma once} является то, что она не входит в стандарт C++, а является лишь расширением, пусть и очень популярным, компиляторов. Эта директива поддерживается очень широко, поэтому её использовании маловероятно приведет к проблемам с переносимостью на практике. GCC, clang, Microsoft Visual C++, Intel C++ все поддерживают эту директиву.
+
 \subsection{Проблемы при использовании препроцессора}
 Основной сложностью\footnote{\url{http://www.stroustrup.com/bs_faq2.html\#macro} --- см. также FAQ Бьярна Страуструпа на тему, почему макросы это плохо.} при использовании макросов препроцессора является то, что препроцессор оперирует на уровне токенов, не зная ничего про контекст где макрос раскрывается. Предположим, что определен макрос {\bf errno}, а где-то ниже программист пытается определить локальную переменную {\bf errno}.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
