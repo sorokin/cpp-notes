@@ -304,6 +304,228 @@ struct mytype
 
 Недостатком использования {\bf \#pragma once} является то, что она не входит в стандарт C++, а является лишь расширением, пусть и очень популярным, компиляторов. Эта директива поддерживается очень широко, поэтому её использовании маловероятно приведет к проблемам с переносимостью на практике. GCC, clang, Microsoft Visual C++, Intel C++ все поддерживают эту директиву.
 
+\subsubsection{Рекурсивное включение}
+\label{recursive_include}
+
+Иногда, при не очень аккуратном программировании возникает ситуация, когда хедер {\bf a.h} инклудит {\bf b.h}, а хедер {\bf b.h} инклудит {\bf a.h}. При отсутствии инклуд-guard'ов это привело бы к ошибке компиляции:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// a.h
+#include "b.h"
+
+// b.h
+#include "a.h"
+
+// c.cpp
+#include "a.h"
+\end{minted}
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+In file included from b.h:1:0,
+                 from a.h:1,
+                 from b.h:1,
+                 from a.h:1,
+                 from b.h:1,
+< ... пропущено ... >
+                 from a.h:1,
+                 from b.h:1,
+                 from a.h:1,
+                 from b.h:1,
+                 from a.h:1,
+                 from c.cpp:1:
+a.h:1:15: error: #include nested too deeply
+ #include "b.h"
+               ^
+\end{minted}
+
+При наличии инклуд-guard'ы в хедерах {\bf a.h} и {\bf b.h} проявления ошибок являются более интересными. Рассмотрим на примере:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// a.h
+#ifndef A_H
+#define A_H
+#include "b.h"
+
+struct a
+{
+    b* x;
+};
+#endif
+
+// b.h
+#ifndef B_H
+#define B_H
+#include "a.h"
+
+struct b
+{
+    a* x;
+};
+#endif
+
+// c.cpp
+#include "a.h"
+\end{minted}
+
+Компиляция {\bf c.cpp} приводит к ошибке:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+In file included from a.h:3:0,
+                 from c.cpp:1:
+b.h:7:5: error: ‘a’ does not name a type
+     a* x;
+     ^
+\end{minted}
+
+Если же {\bf c.cpp} включает {\bf b.h} ошибка звучит:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+In file included from b.h:3:0,
+                 from c.cpp:1:
+a.h:7:5: error: ‘b’ does not name a type
+     b* x;
+     ^
+\end{minted}
+
+Чтобы понять почему возникает подобная ошибка следует посмотреть на результат препроцессирования. В первом случае он такой:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+struct b
+{
+    a* x;
+};
+struct a
+{
+    b* x;
+};
+\end{minted}
+
+Во втором такой:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+struct a
+{
+    b* x;
+};
+struct b
+{
+    a* x;
+};
+\end{minted}
+
+Действительно, какую-бы структуру не объявляли первой, она не сможет сослаться на вторую поскольку вторая ещё не объявлена. В данном примере эти два хедера вообще не должны друг друга инклудить, поскольку достаточно объявления forward-деклараций:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// a.h
+#ifndef A_H
+#define A_H
+struct b;
+
+struct a
+{
+    b* x;
+};
+#endif
+
+// b.h
+#ifndef B_H
+#define B_H
+struct a;
+
+struct b
+{
+    a* x;
+};
+#endif
+\end{minted}
+
+В данном примере какой бы из рекурсивно инклудящих друг-друга хедеров не проинклудить снаружи, мы получаем ошибку. В реальном коде встречаются рекурсивные инклуды, которые приводят к ошибке только если проиклудить один из них снаружи. Так везёт, что снаружи всегда инклудят какой-то один. Тем не менее это ошибка и рекурсивное включение следует избегать. В тех местах, где оно встретилось, как правило, от него можно избавиться использованием forward-деклараций, а так же разбитием большого хедера на части, с более аккуратным контролем зависимостей между частями.
+
+\subsubsection{Защита от рекурсивного включения}
+
+Возможно написать такой include-guard, который будет распозновать рекурсивное включение и выдавать ошибку об этом. Рассмотрим пример с рекурсивным включением из раздела \ref{recursive_include}, но в качестве include-guard будем использовать такой, который детектит рекурсивное включение:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// a.h
+#ifndef A_H
+#define A_H
+#define INSIDE_A_H
+#include "b.h"
+
+struct a
+{
+    b* x;
+};
+
+#undef INSIDE_A_H
+#else
+#ifdef INSIDE_A_H
+#error recursive inclusion
+#endif
+#endif
+
+// b.h
+#ifndef B_H
+#define B_H
+#define INSIDE_B_H
+#include "a.h"
+
+struct b
+{
+    a* x;
+};
+
+#undef INSIDE_B_H
+#else
+#ifdef INSIDE_B_H
+#error recursive inclusion
+#endif
+#endif
+
+// c.cpp
+#include "a.h"
+\end{minted}
+
+Препроцессирование такого {\bf c.cpp} приведет к следующей ошибке:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{text}
+In file included from b.h:4:0,
+                 from a.h:4,
+                 from c.cpp:1:
+a.h:14:2: error: #error recursive inclusion
+ #error recursive inclusion
+  ^~~~~
+\end{minted}
+
+Как видно изнутри {\bf a.h} инклудится {\bf b.h}, который инклудит {\bf a.h}, который выдаёт ошибку, что он заинклужен рекурсивно.
+
+Другим способом отловить рекуривное включение является опредение макроса в include-guard не до хедеров а после:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+// a.h
+#ifndef A_H
+
+#include "b.h"
+
+struct a
+{
+    b* x;
+};
+
+#define A_H
+#endif
+
+// b.h
+#ifndef B_H
+
+#include "a.h"
+
+struct b
+{
+    a* x;
+};
+
+#define B_H
+#endif
+
+// c.cpp
+#include "a.h"
+\end{minted}
+
 \subsection{Проблемы при использовании препроцессора}
 Основной сложностью\footnote{\url{http://www.stroustrup.com/bs_faq2.html\#macro} --- см. также FAQ Бьярна Страуструпа на тему, почему макросы это плохо.} при использовании макросов препроцессора является то, что препроцессор оперирует на уровне токенов, не зная ничего про контекст где макрос раскрывается. Предположим, что определен макрос {\bf errno}, а где-то ниже программист пытается определить локальную переменную {\bf errno}.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
