@@ -1,0 +1,507 @@
+\section{Задача Perfect forwarding}
+
+\subsection{Формулировка проблемы, попытки тривиального решения}
+
+	Пусть у нас есть функция g, принимающая параметр типа T. Мы хотим написать функцию f, которая примет тот же параметр типа T, сделает с ним что-нибудь (пусть в нашем примере f не делает ничего) и вызвать функцию g с этим аргументом.
+
+	Примером пары таких f и g могут служить make\_unique<T>(params) и конструктор T.
+
+	make\_unique сначала вызовет конструктор T с заданными параметрами, а потом обернёт получившийся объект в unique\_ptr. В процессе передачи параметров объектов в конструктор нам и нужен perfect forwarding.
+
+	Напишем первый вариант, который приходит на ум:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T x)
+	{
+	    g(x);
+	}
+	\end{minted}
+
+	Этот способ имеет недостатки. Рассмотрим случай, при котором g принимает параметры по неконстантной ссылке и меняет их. Тогда
+
+	При вызове функции f мы проинициализируем x копией параметра вызова
+
+	В g будет передана ссылка на копию исходного параметра
+
+	В g произойдёт изменение копии исходного параметра, исходный параметр же останется неизменным.
+
+	Это не то поведение, которого мы ожидаем, так как g должна изменить наш параметр.
+
+	Другое решение: заставить f принимать параметр по константной ссылке
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T const& x)
+	{
+	    g(x);
+	}
+	\end{minted}
+
+	Имеем почти ту же самую проблему: если g принимает параметр по неконстантной ссылке, вызов будет невозможен (так как неконстантная ссылка не может быть привязана к константной)
+
+	Третье решение: заставим f принимать параметры по неконстантной ссылке
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T& x)
+	{
+	    g(x);
+	}
+	\end{minted}
+
+	Это будет проблемой при попытке вызвать f для const-объектов или для rvalue, то есть вызов f(5) и f(some\_function()) станет невозможен.
+
+	Ни одно из приведённых выше решений не является универсальным. Возможно ли написать функцию f, работающую во всех случаях?
+
+	Можно сделать две перегрузки f: для константных и неконстантных ссылок.
+
+	\vspace{\baselineskip}
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T const& x)
+	{
+	    g(x);
+	}
+
+	template <typename T>
+	void f(T& x)
+	{
+	    g(x);
+	}
+	\end{minted}
+
+	На первый взгляд это решение кажется хорошим, но очень скоро мы понимаем, что тогда в f нужно будет написать в два раза больше кода. К тому же, если g и f принимают по два параметра, придётся писать уже четыре перегрузки:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T& a, T& b)
+
+template <typename T>
+void f(T const& a, T& b)
+
+template <typename T>
+void f(T& a, T const& b)
+
+template <typename T>
+void f(T const& a, T const& b)
+\end{minted}
+
+для трёх параметров - 8, а для n - $2^n$. Поэтому этот способ не применим для большого количества аргументов.
+
+	Прежде чем рассматривать грамотное C++ 11 решение этой проблемы, давайте ближе познакомимся с правилами вывода ссылок в C++ 11.
+
+
+\subsection{reference collapsing rule}
+
+	Как известно, в C++ не существует ссылок на ссылки. В тех случаях, когда возникает такой тип, ссылки схлопываются (происходит reference collapsing) и получается просто одна ссылка. Например:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T> f(T & x);
+
+	int x = 5;
+	f<int&>(x);
+	\end{minted}
+
+	В качестве T подставляется int\&. При подстановке T -> int\& в T\&,  должно была бы получится ссылка на ссылку int\& \&, но ссылки схлопываются и получается просто int\&. Следовательно сигнатура функции f после подстановки выглядит следующим образом: f<int\&>(int\& x).
+
+	Неформально правило reference collapsing в C++03 можно записать в следующем виде \& + \& = \&
+
+	С появлением в C++11 rvalue-ссылок потребовалось доопределить правила reference collapsing для них. Эти правила могут быть неформально записаны как “одиночный амперсант всегда побеждает”. Таким образом, таблица reference collapsing в C++ 11 выглядит так:
+
+	\& + \& = \&
+
+	\& + \&\& = \&
+
+	\&\& + \& = \&
+
+	\&\& + \&\& = \&\&
+
+	Приведём несколько примеров этого правила:
+
+\begin{center}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T & x);
+
+int y;
+f<int&&>(y);
+\end{minted}
+&
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T && x);
+
+f<int&&>(some_function());
+//some_function возвращает int
+\end{minted}
+\end{tabular}
+
+Тогда при инстанцировании шаблона T -> int\&\&, сигнатура функции имеет вид
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int&&>(int&& & x);
+\end{minted}
+&
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int&&>(int&& && x);
+\end{minted}
+\end{tabular}
+
+После reference collapsing она превращается в:
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int&&>(int&& x);
+\end{minted}
+&
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int&&>(int&& x);
+\end{minted}
+\end{tabular}
+\end{center}
+
+\subsection{Правила особого вывода ссылок}
+
+	Пусть есть конструкция
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void func(T&& x);
+	\end{minted}
+
+	Пусть есть вызов func(expression), expression имеет тип E. Тогда если expression, является lvalue, T выводится как E\&, если же expression является rvalue, то T выводится как E.
+
+	Примеры:
+
+
+\begin{center}
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+lvalue: & rvalue:\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{double pi = 3.14;}
+& \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{
+func(pi);}
+&
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{
+func(4);}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{
+pi - lvalue типа double, T -> double& , сигнатура func: }
+&
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{
+4 - rvalue типа int, тогда T -> int, сигнатура func: } \\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{
+void func<double&>(double& &&);}
+&
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{void func<int>(int&&);} \\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+после reference collapsing & \vspace{\baselineskip} \\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{
+void func<double&>(double&);
+} & \vspace{\baselineskip} \\
+\end{tabular}
+
+\end{center}
+
+
+	\vspace{\baselineskip}
+
+	Отметим, что переменная типа T\&\&, использованная в функции выше, не всегда является rvalue-ссылкой, и называть её rvalue-ссылкой некорректно. В книге Скота Майерса “Эффективный и современныи С++” эти ссылки названы универсальными. Причины такого наименования станут ясны далее.
+
+	Эти правила применяются для реешения проблемы perfect forwarding.
+
+\subsection{Решение проблемы perfect forwarding}
+
+	Рассмотрим код способы передачи аргумента в g:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T&& x)
+	{
+	    //Как можно передать x в g?
+	    g(x); //передать как lvalue
+	    g(std::move(x)); //передать как rvalue
+	}
+
+	\end{minted}
+
+	Ни один ни другой способ не подходит. x должно передаваться так же, как получается, то есть поставлена задача сохранения value-category: пришедшее как rvalue значение, должно быть передано как rvalue, а пришедшее как lvalue - как lvalue.
+
+	Рассмотрим вспомогательную функцию, с помощью которой мы будем это делать.
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename U>
+	U&& forward(U& a)
+	{
+	    return static_cast<U&&>(a);
+	}
+	\end{minted}
+
+	Тогда код, использующий её, будет выглядеть так
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T&& a)
+	{
+	    g(forward<T>(a));
+	}
+	\end{minted}
+
+	Данная функция реализует perfect forwarding. Чтобы убедиться в этом рассмотрим процесс вызова f для rvalue и lvalue и посмотрим на процесс вывода и подстановки аргументов шаблона.
+
+\begin{center}
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+lvalue: & rvalue:\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+int a; & \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+f(a); & f(5);\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+a - lvalue типа int, поэтому T выводится в int\&, тогда после подстановки, до применения reference collapsing f выглядит так: & 5 - rvalue типа int, следовательно Т выводится в int, а после подстановки f выглядит так:\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int&>(int& && a)
+{
+    g(forward<int&>(a));
+}
+\end{minted}
+&
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int>(int&& a)
+{
+    g(forward<int>(a));
+}
+\end{minted}
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+После применения reference collapsing, она будет выглядеть так:
+& \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int&>(int& a)
+{
+   g(forward<int&>(a));
+}
+\end{minted}
+& \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+В forward в качестве U передают int\& (явно, в треугольных скобочках). Таким образом после подстановки forward выглядит так:
+ & В forward в качестве U передают int (явно, в треугольных скобочках), и после подстановки forward выглядит так:
+\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int& && forward<int&>(int& & a)
+{
+    return static_cast<int& &&>(a);
+}
+\end{minted}
+ & \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int&& forward<int>(int& a)
+{
+    return static_cast<int&&>(a);
+}
+
+\end{minted}
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+После reference collapsing: & \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int& forward<int&>(int& a)
+{
+     return static_cast<int&>(a);
+}
+
+\end{minted}
+ & \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+Заметим, что эта функция не делает ничего, а просто кастит int\& к int\&. Поскольку forward возвращает int\&, то результат его вызова - lvalue.Значит f передаёт свой аргумент в g как lvalue. Заметим, что изначально в f a пришла как lvalue. Значит, для lvalue передача работает корректно. & Заметим, что в данном случае функция forward работает как move(приводит lvalue-ссылку к rvalue-ссылке). Результат вызова функции forward является rvalue, то есть f передаёт a как rvalue. Заметим, что получали мы её тоже как rvalue, значит, для rvalue передача работает корректно.\\
+\end{tabular}
+
+\end{center}
+
+	Итого, мы сохранили value-category. forward работает либо как ничего (если ей передано lvalue), либо как move(если ей передано rvalue).
+
+\subsection{Одна частая ошибка при использовани forward}
+	Иногда при вызове forward забывают указать template-параметр в треугольных скобках. Выглядит это так:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T&& a)
+{
+    g(forward(a));
+}
+
+
+\end{minted}
+
+	Покажем, почему это ошибка и как от неё избавиться. Расмотрим вызовы для lvalue и rvalue.
+
+\begin{center}
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+lvalue: & rvalue:\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+int a; & \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+f(a); & f(5);\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+a - lvalue типа int, поэтому T выводится в int\&, тогда после подстановки, до применения reference collapsing f выглядит так: & 5 - rvalue типа int, следовательно Т выводится в int, а после подстановки f выглядит так:\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f(int& && a)
+{
+    g(forward(a));
+}
+\end{minted}
+&
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f<int>(int&& a)
+{
+    g(forward(a));
+}
+
+\end{minted}
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+После применения reference collapsing, она будет выглядеть так:
+& \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f(int& a)
+{
+    g(forward(a));
+}
+\end{minted}
+& \vspace{\baselineskip}\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+Типы для forward выводятся следующим образом:
+a имеет тип int\&, а forward принимает U\&, таким образом, U выводится как int. Тогда forward выглядит следующим образом::
+ & U выводится как int\&\&, тогда вместо U\& подставляется int\&\& \& (сжимается в int\&\&), а вместо U\&\& подставляется int\&\& \&\& (сжимается в int\&\&) Тогда forward выглядит следующим образом:
+\\
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int&& forward(int& a)
+{
+    return static_cast<int&&>(a);
+}
+
+\end{minted}
+ & \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int&& forward(int& a)
+{
+    return static_cast<int&&>(a);
+}
+
+
+\end{minted}
+\end{tabular}
+
+\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+То есть forward для lvalue работает как move, а должен рабоать как ничего. & Таким образом, для rvalue forward тоже сработает как move.\\
+\end{tabular}
+
+\end{center}
+
+	Мы выяснили, что, если в forward не указать параметр в треугольных скобках, то он всегда будет работать как move.
+
+	Как можно решить эту проблему? Нужно запретить выводить тип для forward, а позволить только явно указывать его. Давайте запретим вывод типа в forward. Рассмотрим вспомогательный класс.
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct no_deduce
+{
+    typedef T type;
+}
+\end{minted}
+
+	Запишем новую версию forward:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename U>
+U&& forward(typename no_deduce<U>::type& a)
+{
+     return static_cast<U&&>(a);
+}
+\end{minted}
+
+	Заметим, что typename no\_deduce<U>::type\& эквивалентно U\&.
+
+	Эта конструкция запрещает вывод типов, так как при передаче значения в функцию нам нужно вывести не U\&, а typename no\_deduce<U>::type\&, а это невыводимый контекст. Компилятор может определить, каким типом должен быть no\_deduce<U>::type (пусть он должен иметь тип E), но он не способен вывести тип U, чтобы no\_deduce<U>::type имел тип E (В данном конкретном случае это сделать можно (U должен совпадать с E), но в общем случае такая задача неразрешима, поэтому компилятор C++ не выводит типы в таких случаях).
+
+	Проблема решена.
+
+	Отметим напоследок, что forward есть в стандартной библиотеке.
+
+\subsection{Использование perfect forwarding}
+
+	Perfect forwarding используется, например, при использовании функций высшего порядка - то есть функций, принимающих другие функции в качестве аргументов или возвращающих их в качестве возвращаемого значения.
+
+	Без perfect forwarding, применение функций высшего порядка довольно обременительно, так как нет удобного способа передать аргументы в функцию внутри функции-обертки.
+	Возвращаясь к примеру, изложенному в начале главы, функцию-обёртку над конструктором типа T make\_unique с использованием perfect forwarding  можно реализовать следующим образом:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename… Args>
+//тип T - тип, обёртываемый в shared_ptr, Args - типы аргументов конструктора.
+shared_ptr<T> make_unique(Args&&... args)
+{
+    return unique_ptr<T>(new T(std::forward<Args>(args)...))
+}
+\end{minted}
+
+	Про используемые в коде variadic template можно подробнее узнать в следующей главе.

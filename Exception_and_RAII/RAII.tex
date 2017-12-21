@@ -1,0 +1,197 @@
+\section{RAII-classes}
+\subsection{Пример}
+Начнем с примера. Пусть мы хотим открыть несколько файлов.
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void read_some_file() {
+    open_for_read("first_part.txt");
+    open_for_read("second_part.txt");
+    open_for_read("third_part.txt");
+}
+\end{minted}
+
+
+Причем гарантировать их закрытие в случает возникновения исключения.
+Тогда давайте напишем такой код:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void read_some_file() {
+    try {
+        open_for_read("first_part.txt");
+        open_for_read("second_part.txt");
+        open_for_read("third_part.txt");
+    } catch (...) {
+        // Но мы не может понять какой файл открылся, какой нет. :(
+    }
+}
+\end{minted}
+
+Так как мы хотим запоминать какие файлы успели открыться, то перепишем так:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void read_some_file() {
+    size_t i = 0;
+    string files[3] = {"first_part.txt", "second_part.txt", "third_part.txt" };
+    try {
+        for (; i < 3; ++i) {
+            open_for_read(files[i]);
+        }
+    } catch (...) {
+        for (size_t j = i; j != 0; --j) {
+            close(files[j - 1]);
+        }
+    }
+}
+\end{minted}
+
+Итого код увеличился в два раза.
+
+С помощью RAII-класса файловых дескрипторов Reader, можно упростить код:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void read_some_file() {
+    Reader reader1("first_part.txt");
+    Reader reader2("second_part.txt");
+    Reader reader3("third_part.txt");
+}
+\end{minted}
+
+Этот получился довольно простой и безопасный. Почему безопасный? Потому, что объект reader открывает файл в конструкторе и закрывает в деструкторе. И если возникнет исключение, то при раскрутке стека удаляться все локальные объекты, в том числе и файловые дескрипторы, закрывая файлы. Если же какой-то файл не успел открыться, то не успел и создаться объект отвечающий за него.
+
+Это удобная идея получила название: RAII.
+
+\subsection{Определение}
+
+\textbf{<<Resource Acquision is Initialozation>>} или <<Захват ресурса - это инициализация>> - это идиома класса, который инкапсулирует управление каким-то ресурсом. Она значит, что объект этого класса, получает доступ к ресурсу и удерживает его в течении своей жизни, а потом этот ресурс высвобождается при уничтожении объекта.
+В конструкторе он должен захватить ресурс(открыть файл, выделить файл и т. д.), а в десткрукторе освободить его(закрыть файл, освободить память и т. д.).
+
+Также важно подумать, что должно происходить при копировании объекта, часто мы просто явно запрещаем это делать.
+
+\subsection{Что это дает?}
+\begin{itemize}
+\item Удобство кода: не нужно явно каждый раз в конце тела функции освобождать ресурсы и учитывать какие ресурсы успели захватиться, а какие нет. Когда выполнение текущего блока будет завершено, локальные объекты RAII-классов удалятся и необходимы ресурсы освободятся автоматически.
+\item Безопасность исключений: Если вызывается исключение, то гарантируется, что стек очиститься и все локальные объекты удаляться, а значит и освободятся ресурсы.
+\item Часто важно освобождать ресурсы в обратном порядке, относительно того, как они были захвачены. Это как раз поддерживается раскруткой стека при удалении локальных объектов.
+\end{itemize}
+
+\textcolor{red}{NB}) Это идиома работает не только в С++, а любом языке с предсказуемым временем жизни объектов.
+
+
+Вот небольшой пример RAII-класса, который будет управлять файлом.
+Ресурсом является данные типа FILE (формат файла в Си).
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+class File {
+public:
+    File(char const *filename, char const *mode)
+        : _file(fopen(filename, mode)) { } //захват ресурса
+
+    ~File() {
+        fclose(_file); // освобождение ресурса
+    }
+
+    File(File const &) = delete;
+    File operator=(File const &) = delete;
+
+private:
+    FILE *_file;
+};
+\end{minted}
+
+RAII часто встречается стандартной библиотеке:
+\begin{itemize}
+\item Smart pointers -- инкапсулируют несколько видов управления памятью
+\item i/ofstream
+\item Различные контейнеры
+\end{itemize}
+
+\subsection{Best practice}
+
+Вернемся к предыдущему примеру File.
+Пусть в конструкторе есть код, который может сгенерировать исключение, тогда возникает проблема освобождения ресурса.
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+File::File(char const *filename, char const *mode)
+    : _file(fopen(filename, mode)) {
+    //код допускающий исключение
+}
+\end{minted}
+Если в теле конструктора происходит исключение, то деструктор не вызовется, так как объект не считается созданным. Что делать?
+
+Решение № 1
+Написать try-catch
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+class File {
+public:
+    File(char const *filename, char const *mode) try
+        : _file(fopen(filename, mode)) {
+    //код допускающий исключение
+    }
+    catch (...) {
+        destruct_obj();
+    }
+
+    ~File() {
+        destruct_obj();
+    }
+
+private:
+    void destruct_obj() {
+        fclose(_file);
+    }
+    FILE * _file;
+};
+\end{minted}
+Минусы решения: код раздулся.
+
+Решение № 2
+Можно сделать отдельный подкласс, который хранит в себе ресурс.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+class File {
+    struct FileHandle {
+        FileHandle(FILE *fh)
+        : _fh(fh) { }
+
+        ~FileHandle() {
+            fclose(_fh);
+        }
+
+        FILE *_fh;
+    };
+public:
+    File(char const * filename, char const * mode)
+    : _file(fopen(filename, mode)) {
+        // код допускающий исключения
+    }
+
+    ~File() = default;
+
+private:
+    FileHandle _file;
+};
+\end{minted}
+
+Теперь все тоже хорошо, так как при возникновении исключения, вызовутся деструкторы от все членов класса.
+
+Решение № 3 (начиная с С++11)
+Делегирующий конструктор.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+class File
+{
+    File(FILE * file)
+        : _file(file) { }
+
+public:
+    File(char const * filename, char const * mode)
+        : File(fopen(filename, mode)) {
+        // код допускающий исключения
+    }
+
+    ~File() {
+        fclose(_file);
+    }
+
+private:
+    FILE *_file;
+};
+\end{minted}
+
+Дело в том, что если мы в конструкторе вызываем другой конструктор, то после его выполнения объект считается созданным и уничтожится автоматически.
