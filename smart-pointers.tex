@@ -1,6 +1,6 @@
 \section{Умные указатели}
 
-Рассмотрим следующий код:
+Рассмотрим следующий код: 
 
 \begin{minted}[
 linenos,
@@ -24,7 +24,7 @@ framesep=2mm]
 {c++}
 container* create_container()
 {
-    container* c = new container();
+    container* c = new container();	
     try
     {
         fill(*c);
@@ -56,7 +56,7 @@ std::unique_ptr<container> create_container()
 \end{minted}
 
 \subsection{unique\_ptr}
-Самым простым умным указателем является \mintinline{c++}{std::unique_ptr}.
+Самым простым умным указателем является \mintinline{c++}{std::unique_ptr}. 
 Внутри себя \mintinline{c++}{std::unique_ptr} хранит один указатель \mintinline{c++}{T* ptr} и делает ему \mintinline{c++}{delete} в дескрукторе.
 
 \begin{minted}[
@@ -149,7 +149,7 @@ framesep=2mm]
 {c++}
 unique_ptr& operator=(unique_ptr&& other) noexcept
 {
-    reset(other.release());
+    reset(other.release()); 
     return *this;
 }
 
@@ -164,3 +164,544 @@ unique_ptr(unique_ptr&& other) noexcept
 Термин владение применяется не только к умным указателям, например можно сказать, что std::vector владеет памятью выделенной под свои элементы (обязан её освободить), а также владеет своими элементами (обязан вызывать им деструктор).
 
 В некоторых случаях объект может иметь несколько владельцев. Это называется разделяемым владением и работает следующим образом: пока существует хотя бы один владелец объект продолжает жить, когда пропадает последний владелец --- объект удаляется. Для умных указателей существует два способа реализации разделяемого владения: подсчет ссылок и провязка всех владельцев в двусвязный список. Оба подхода имеют свои преимущества и недостатки. Подсчет ссылок применяется во включенном в стандартную библиотеку указателе std::shared\_ptr. Указатель использующий провязку владельцев в двусвязный список в стандартной библиотеке отсутствует, но часто называется linked\_ptr.
+
+\subsection{Shared\_ptr}
+\mintinline{c++}{std::shared_ptr} - это умный указатель, с разделяемым владением объектов через его указатель. Несколько указателей могут владеть одним объектом. Объект будет уничтожен, когда последний \mintinline{c++}{shared_ptr} будет уничтожен или сброшен.
+
+\textcolor{red}{NB}) \mintinline{c++}{shared_ptr} может не указывать ни на какой объект.
+
+\subsubsection{Наивная реализация.}
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename D>
+struct shared_ptr {
+    T* obj; // указатель на объект управления
+    size_t* counter; // счетчик ссылок, обнуление которого влечет удаление объекта
+    D *deleter; // функция, которая удаляет объект
+    shared_ptr(*T, D const& deleter);
+}
+
+\end{minted}
+
+
+
+\textcolor{red}{NB}) \textbf{Зачем делитер, если можно всегда вызвать деструктор объекта?} Ответ: Ингда мы хотим реализовать следующую схему пользования объектом: 1) мы берем объект из ресурса. 2) пользуемся им. 3) Потом возвращаем его от куда взяли, когда он стал нам не нужен.
+
+\subsubsection{Оптимизация по памяти.}
+На самом деле все немного сложнее: нам может понядобиться хранить в нашем smart\_ptr аллокатор, счетчик weak\_ptr (об этом позднее), указалеть на объект управления. Поэтому имеет смысл хранить все это в одном объекте, для оптимизации выделения памяти под smart\_ptr. С учетом выше указанного:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename D>
+struct shared_ptr {
+    T* obj; // указатель на объект управления
+    struct control_block {
+        size_t* counter; // счетчик ссылок, обнуление которого влечет удаление объекта
+        D *deleter; // функция, которая удаляет объект
+    }* con_bl;
+    shared_ptr(*T, D const& deleter);
+};
+
+\end{minted}
+
+
+\textcolor{red}{NB}) если создавать shared\_ptr с помощью конструктора, то память будет распределяться как выше указанно, но если создать shared\_ptr с помошью \mintinline{c++}{std::make_shared(new T)}\footnote{создает объект и оборачивает его в shared\_ptr}, то память выделится только один раз, и объект будет лежать рядом с блоком управления. Поэтому лучше использовать последний способ где это возможно, чтобы снизить оверхед от "умности"\ указателя.
+
+\subsubsection{Специальный конструтор.}
+Иногда мы хотим продлевать объекту жизнь, если что-то ссылается на его поля. Для этого существует специальный конструтор:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct car {
+    Wheel wheel[4];
+}
+// У нас есть машина с колесами. Мы хотим, чтобы пока мы умеет живой указатель на колесо, машина тоже не удалялась вместе с колесами.
+/* ... */
+shared_ptr<car> p;
+shared_ptr<wheel> q(&p, wheel[2]); // мы переиспользуем p.counter для q.
+
+\end{minted}
+Для этого наверно, будет полезно иметь ссылку на объект в блоке управления.\footnote{Мнение автора.}
+
+
+\textcolor{red}{NB}) Еще одно применение этой фичи: мы хотим хранить дерево по shared\_ptr, чтобы когда мы удалили корень, дерево само удалиться. Тогда с помощью этого, конструктора можно гарантировать, что если есть указатель на вершины дерева, то можно гарантировать, что по нему можно пробежаться.
+
+\subsubsection{Заметки по использованию.}
+\begin{enumerate}
+    \item
+    Возможно глупый пример, но все же.
+    \begin{minted}[
+    linenos,
+    frame=lines,
+    framesep=2mm,
+    tabsize = 4,
+    breaklines]
+    {c++}
+
+    int *silly_ptr = new int(5);
+    shared_ptr<int> a1(silly_ptr);
+    shared_ptr<int> b1(silly_ptr);
+    // b1.counter = a1.counter = 1;
+    // разные управляющие блоки
+    shared_ptr<int> a2(silly_ptr);
+    shared_ptr<int> b2(a2);
+    // b2.counter = a2.counter = 2;
+    // одинаковые
+
+    \end{minted}
+
+
+\end{enumerate}
+\subsubsection{Weak\_ptr}
+\mintinline{c++}{std::weak_ptr} - умный указатель, который моделирует временное владение объектом.
+
+
+Ситуация: мы хотим хешировать картинки, которые хранять по shared\_ptr. То есть нам нужен мэп: name\_image $\to$ shared\_ptr. Но есть проблема, что если мы будем хранить в мэпе shared\_ptr, то они будут считать владельцами этих картинок, и они никогда не будут удаляться (если только их не удалить руками). В этой ситуации может помочь \mintinline{c++}{std::weak_ptr}.
+
+
+Дело в том, что weak\_ptr содержит "слабую"\ ссылку на объект, управляемый указателем shared\_ptr. Для этого и нужен счетчик "слабых" сслылок в блоке управления shared\_ptr. Теперь блок управления считает еще и слабые сслыки и когда удаляется управляемый объект, блок управления остается жить, пока на него ссылается хотя бы один weak\_ptr, чтобы сообщать им о существовании объекта. Например с помощью метода \mintinline[breaklines]{c++}{std::weak_ptr::expired() // проверяет удален ли объект.}
+
+
+То есть все, что должен хранить внутри себя weak\_ptr - это указатель блок управления.
+
+
+Теперь вернемся к нашей задаче: мы сделаем мэп: name\_image $\to$ weak\_ptr.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+map<string, weak_ptr<image>> cache;
+shared_ptr<image> load_image(string const& name) {
+    auto i = cache.find(name);
+    if (i != cache.end()) {
+        shared_ptr<image> temp = i->second.lock(); // создаем shared_ptr, который управляет объектом, которым управляет i. Если объект удален temp будет пустой.
+        if (temp) {// проверка на то, что temp не пуст
+            return temp;
+        }
+    }
+    // если картинки нет в кэше загружаем ее.
+    shared_ptr<image> temp = real_load(name);
+    cache[name] = temp; // переобразование weak_ptr(shared_ptr);
+    return temp;
+}
+
+\end{minted}
+
+
+\textcolor{red}{NB}) Преобразования между shared\_ptr и weak\_ptr - это нормально. Только с его помощью можно обратиться к объекту weak\_ptr, не определяя новых указателей.
+
+
+\textcolor{red}{NB}) С помощью weak\_ptr можно решать циклические зависимости shared\_ptr. Суть проблемы в том, что объекты не могут удалиться, так как ссылаются друг на друга.
+
+\subsection{Сast\_pointer}
+Что выполнять безоспасное приведение умных указателей можно искользовать слудующий синтаксис:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct A {/*...*/};
+struct B: A {/*...*/};
+
+shared_ptr<A> foo;
+shared_ptr<B> bar;
+/*...*/
+bar = make_shared<B>();
+
+foo = dynamic_pointer_cast<A>(bar);
+// иначе пришлось бы писать так:
+foo = shared_ptr<A>(dynamic_cast<A>(bar.get()));
+
+\end{minted}
+
+\subsection{linked\_ptr}
+
+\mintinline{c++}{linked_ptr} --- умный указатель с разделяемым владением, реализованный с помощью двусвязного списка.
+
+\mintinline{c++}{linked_ptr} хранит в себе указатель на объект и два указателя на соседние \mintinline{c++}{linked_ptr}'ы в двусвязном списке. Для каждого двусвязного списка образованного из \mintinline{c++}{linked_ptr}'ов верно, что все указатели в нём владеют одним общим объектом.
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template <class T> struct linked_ptr
+{
+    ...
+private:
+    T* ptr;
+    linked_ptr* prev; 
+    linked_ptr* next; 
+};
+\end{minted}
+
+\begin{asy}
+real arrow_len = 5;
+real box_h = arrow_len;
+real box_w = 2.0 * box_h;
+real box_count = 3;
+real object_box_w = box_count * box_w + (box_count + 1) * arrow_len;
+
+real obj_x0 = 0;
+real obj_x1 = obj_x0 + object_box_w;
+real obj_y0 = 0;
+real obj_y1 = box_h;
+
+real obj_label_x = (obj_x0 + obj_x1) / 2.0;
+real obj_label_y = (obj_y0 + obj_y1) / 2.0;
+
+real box_y0 = obj_y1 + arrow_len;
+real box_y1 = box_y0 + box_h;
+
+real box_label_x_offset = box_w / 2.0;
+real box_label_y_offset = box_h / 2.0;
+
+real arrow_left_y = box_y0 + box_h * 2.0 / 3.0;
+real arrow_right_y = box_y0 + box_h * 1.0 / 3.0;
+real arrow_down_offset = box_w * 0.5;
+size(10cm,0);
+
+// green box:
+path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
+fill(obj, deepgreen);
+// it's label :
+label("$OBJECT$", (obj_label_x, obj_label_y), white);
+
+for (int i = 1; i <= box_count; ++i) {  
+    real x0 = arrow_len * i + box_w * (i - 1);
+    real x1 = x0 + box_w;
+
+    // blue box:
+    path ptr = box((x0, box_y0), (x1, box_y1));
+    fill(ptr, royalblue);
+    // it's label:
+    label("$ptr" + string(i) + "$", (x0 + box_label_x_offset, box_y0 + box_label_y_offset), white);
+
+    // left arrows:
+    draw((x0 - arrow_len, arrow_left_y) -- (x0, arrow_left_y), arrow=Arrow);
+    draw((x1, arrow_left_y) -- (x1 + arrow_len, arrow_left_y), arrow = Arrow);
+
+    // right arrows:
+    draw((x0, arrow_right_y) -- (x0 - arrow_len, arrow_right_y), arrow=Arrow);
+    draw((x1 + arrow_len, arrow_right_y) -- (x1, arrow_right_y), arrow = Arrow);
+
+    // down arrow:
+    draw((x0 + arrow_down_offset, box_y0) -- (x0 + arrow_down_offset, box_y0 - arrow_len), arrow=Arrow);
+}
+\end{asy}
+
+Присваивание \mintinline{c++}{linked_ptr} - это вставка в нужное место двусвязного списка.
+\mintinline{c++}{auto ptr4 = ptr2;}
+
+\begin{asy}
+real arrow_len = 5;
+real box_h = arrow_len;
+real box_w = 2.0 * box_h;
+real box_count = 4;
+real object_box_w = box_count * box_w + (box_count + 1) * arrow_len;
+
+real obj_x0 = 0;
+real obj_x1 = obj_x0 + object_box_w;
+real obj_y0 = 0;
+real obj_y1 = box_h;
+
+real obj_label_x = (obj_x0 + obj_x1) / 2.0;
+real obj_label_y = (obj_y0 + obj_y1) / 2.0;
+
+real box_y0 = obj_y1 + arrow_len;
+real box_y1 = box_y0 + box_h;
+
+real box_label_x_offset = box_w / 2.0;
+real box_label_y_offset = box_h / 2.0;
+
+real arrow_left_y = box_y0 + box_h * 2.0 / 3.0;
+real arrow_right_y = box_y0 + box_h * 1.0 / 3.0;
+real arrow_down_offset = box_w * 0.5;
+size(10cm,0);
+
+// green box:
+path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
+fill(obj, green);
+// it's label :
+label("$O B J E C T$", (obj_label_x, obj_label_y), white);
+
+for (int i = 1; i <= box_count; ++i) {  
+ 	real x0 = arrow_len * i + box_w * (i - 1);
+ 	real x1 = x0 + box_w;
+
+	// blue box:
+ 	path ptr = box((x0, box_y0), (x1, box_y1));
+	fill(ptr, blue);
+ 	// it's label:
+ 	real nmb = i;
+ 	if (i >= 3) {
+ 		nmb = 7 - i;
+ 	}
+ 	label("$ptr" + string(nmb) + "$", (x0 + box_label_x_offset, box_y0 + box_label_y_offset), white);
+
+ 	// left arrows:
+ 	draw((x0 - arrow_len, arrow_left_y) -- (x0, arrow_left_y), arrow=Arrow);
+	draw((x1, arrow_left_y) -- (x1 + arrow_len, arrow_left_y), arrow = Arrow);
+	
+	// right arrows:
+	draw((x0, arrow_right_y) -- (x0 - arrow_len, arrow_right_y), arrow=Arrow);
+	draw((x1 + arrow_len, arrow_right_y) -- (x1, arrow_right_y), arrow = Arrow);
+
+	// down arrow:
+	draw((x0 + arrow_down_offset, box_y0) -- (x0 + arrow_down_offset, box_y0 - arrow_len), arrow=Arrow);
+}
+\end{asy}
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+linked_ptr(linked_ptr const& other) noexcept :
+        prev(other.prev),
+        next(other.next),
+        ptr(other.ptr)
+    {}
+
+\end{minted}
+
+Аналогично, при удалении \mintinline{c++}{linked_ptr} просто перенаправляются ссылки соседей и при необходимости удаояется сам объект:
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+~linked_ptr() noexcept {
+       if (!ptr) return;
+        if (prev == this)
+            delete ptr;
+        if (prev) prev->next = next;
+        if (next) next->prev = prev;
+}
+
+\end{minted}
+
+Как видно, в \mintinline{c++}{linked_ptr} все элементы списка одновременно владеют ссылаемым объектом, но при этом имеют право удалять его только при удалении списка.
+
+\subsection{intrusive\_ptr}
+
+\mintinline{c++}{intrusive_ptr} - также разделяемый умный указатель. В stl его нет, но он есть в boost. Идея очень похожа на \mintinline{c++}{std::shared_ptr}, но в отличае от последнего в \mintinline{c++}{intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается. Т.е. Реализовать его остается задачей пользователя.
+Для корректной работы \mintinline{c++}{intrusive_ptr} надо реализовать функции:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+int intrusive_ptr_add_ref(T* p);
+int intrusive_ptr_release(T* p);
+
+\end{minted}
+
+Пример использования :
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+#include <boost/intrusive_ptr.hpp>
+
+class Test {
+public:
+    int ref_count;
+};
+
+void intrusive_ptr_add_ref(Test *p) {
+    ++p->ref_count;
+}
+
+void intrusive_ptr_release(Test *p) {
+    if (0 == --p->ref_count)
+        delete p;
+}
+
+int main() {
+    boost::intrusive_ptr<Test> p(new Test());
+}
+
+\end{minted}
+
+Замечание: \mintinline{c++}{intrusive_ptr} по понятным причинам эффективнее \mintinline{c++}{shared_ptr}, и если планируется использование разделяемого smart-pointer’а для него, то лучше юзать \mintinline{c++}{intrusive_ptr}, а в случае если приходится иметь дело с библиотечным классом, то \mintinline{c++}{std::shared_ptr}.
+
+\subsection{make\_shared / make\_unique}
+
+Как было сказано ранее, помимо стандартных конструкторов от указателя стандарт предлагает фабрики для создания объектов, определенные следующим образом (рассмотрим на примере \mintinline{c++}{std::shared_ptr}) : 
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+template<typename T, typename… Args>
+shared_ptr make_shared<T>(Args&&… args) {
+        return shared_ptr(new T(std::forward<Args>(args)...));
+}
+
+\end{minted}
+
+Исторически введение данного метода должно было решить проблему с гарантиями безопасности. Представим следующую ситуацию :
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+f(std::shared_ptr<Class>(new Class(“class”)), g());
+
+\end{minted}
+
+При этом \mintinline{c++}{g()} бросает исключение. Т.к. по стандарту нет гарантии порядка вычисления аргументов \mintinline{c++}{f}, то может произойти следующее : сначала создадим \mintinline{c++}{new Class()}, выделим память, потом - вызовем \mintinline{c++}{g()}, которое бросит исключение, после чего конструктор \mintinline{c++}{shared_ptr} уже не вызовется, т.к. бросился exception. А т.к. мы нигде не пишем слово \mintinline{c++}{delete}, то произойдет memory leak.
+
+Теперь рассмотрим случай с \mintinline{c++}{make_shared} : 
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+f(std::make_shared<Class>(“class”), g());
+
+\end{minted}
+
+Если сначала вызовется \mintinline{c++}{g()}, то до конструктора \mintinline{c++}{Class} дело вообще не дойдет и упомянутой проблемы не возникнет. С другой стороны, если сначала вызовется \mintinline{c++}{make_shared}, то объект будет уже обернут в smart pointer и после исключения в \mintinline{c++}{g()} он будет автоматически удален!!!
+
+Другие приятные особенности фабрик вида \mintinline{c++}{make_pointer} : 
+
+\begin{enumerate}
+\item Они экономят аллокации памяти (вместо двух аллокаций: \mintinline{c++}{new object()} и \mintinline{c++}{new counter}() происходит одна аллокация данных для пары <\mintinline{c++}{object}, \mintinline{c++}{counter}>
+\item  Мы теперь не используем в коде не только \mintinline{c++}{delete}, но и голый \mintinline{c++}{new}. (no naked new)
+\end{enumerate}
+
+\subsection{Smart pointers pointing on this}
+
+Особый случай, когда нельзя просто так взять и использовать умные указатели бездумно - это указатели на this, которые возвращает метод класса. Рассмотрим код :
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+class SomeClass {
+	int data = 5;
+	std::shared_ptr f() {
+		return std::shared_ptr(this);
+	}
+	void foo() {}
+}
+
+SomeClass obj;
+
+if (true) { // some scope
+	auto ptr = ob.f();
+} // exit scope (*)
+obj.foo();
+
+\end{minted}
+
+В этом примере при выхода из скоупа (*) т.к. умный указатель на obj создан всего 1, он вызовет деструктор \mintinline{c++}{obj}. Но при этом после этого мы уже не сможем его использовать (\mintinline{c++}{obj.foo()} уже некорректно). Поэтому для таких целей в stdlib есть интерфейс \mintinline{c++}{std::enable_shared_from_this}, оторый позволяет держать сильную ссылку на себя внутри самого объекта класса, который от него унаследован. В нашем случае :
+
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+class SomeClass: std::enable_shared_from_this<SomeClass> {
+	int data = 5;
+	std::shared_ptr f() {
+		return std::shared_ptr(this);
+	}
+	void foo() {}
+}
+
+
+SomeClass obj;
+
+
+if (true) { 
+	auto ptr = ob.f();
+} 
+obj.foo();
+
+\end{minted}
+
+Такой код будет уже корректный.
+
+\subsection{smart pointers и наследование}
+
+В стандартной библиотеке умные указатели сделаны так, что если присваивания объекта типа \mintinline{c++}{A} может быть произведено в объект типа \mintinline{c++}{B}, то присваивания объекта типа \mintinline{c++}{smart_pointer<A>} может быть произведено в объект типа \mintinline{c++}{smart_pointer<B>}.
+В том числе:
+ 
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+shared_ptr<Derived> dp1(new Derived); 
+shared_ptr<Base> bp1 = dp1; 
+shared_ptr<Base> bp2(dp1); 
+shared_ptr<Base> bp3(new Derived);
+
+\end{minted}
+Это корректный код. Но стоит отметить, что в этом случае т.к. указатель внутри будет хранится на \mintinline{c++}{Derived} объект, то деструктор будет вызван ровно его. Поэтому если он не объявлен как виртуальный, то это UB.
+Для явного каста указателей в стандартной библиотеке есть специальные методы:
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+derived_ptr = static_pointer_cast<Derived>(base_ptr);
+
+\end{minted}
+Этот стейтмент валиден т.и.т.т, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} - валидно, т.к. Ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Его основное преимущество - отсутствие необходимости писать \mintinline{c++}{.get()} вручную и тем самым необходимости работать с классическими голыми указателями.
+
+\subsection{доп. функции}
+\begin{enumerate}
+\item Умные указатели умеют каститься к \mintinline{c++}{bool} (\mintinline{c++}{true} т.и т.т., когда указываемый объект не \mintinline{c++}{nullptr})
+\item  Также для них определены операции сравнения \mintinline{c++}{==}, \mintinline{c++}{!=}, \mintinline{c++}{<}, которые сравнивают голые указатели внутри.
+\end{enumerate}
+
+\subsection{Performance test}
+
+Также уместно представить сравнение производительностей разных видов указателей:
+
+% \ASYinputx{g}
+\begin{asy}
+real linked = 51;
+real shared = 75;
+real intrusive = 55;
+real unique = 0;
+real bench_width = 45.0;
+real max_height = 75;
+
+real linked_offset = bench_width;
+real shared_offset = 2 * bench_width;
+real intrusive_offset = 3 * bench_width;
+real unique_offset = 4 * bench_width;
+real label_offset = (shared_offset - linked_offset) / 2.0;
+
+size(20cm,0);
+path lin = box((0,0), (linked_offset,linked));
+fill(lin, green);
+
+path sha = box((linked_offset,0), (shared_offset,shared));
+fill(sha, blue);
+
+path intr = box((shared_offset,0), (intrusive_offset,intrusive));
+fill(intr, magenta);
+
+path uniq = box((intrusive_offset,0), (unique_offset,unique));
+fill(uniq, red);
+label("$linked\underline{\hspace{0.3cm}}ptr$", (linked_offset - label_offset, linked * 1.03), black);
+label("$std::shared\underline{\hspace{0.3cm}}ptr$", (shared_offset - label_offset, shared * 1.03), black);
+label("$boost::intruisive\underline{\hspace{0.3cm}}ptr$", (intrusive_offset - label_offset, intrusive * 1.03), black);
+label("$std::unique\underline{\hspace{0.3cm}}ptr$", (unique_offset - label_offset, unique * 1.03), black);
+label("copy constructor benchmark : ", (bench_width * 2.0, max_height * 1.1));
+\end{asy}
