@@ -1,0 +1,514 @@
+\section{Метопрограммирование в C++11 и выше}
+	\subsection{Expression SFINAE}
+		\subsubsection{Основная суть}
+Одним из самых значительных улучшений SFINAE в C++11 стало появление так называемого Expression SFINAE. \\\\
+Его суть крайне проста.
+Теперь в параметрах шаблона и в сигнатуре функции разрешено использовать любые выражения.
+Невозможность вычисления трактуется как SFINAE-failure. \\
+До C++03 были разрешены только constant expressions. 
+В случае использования других выражений всегда возникал hard-error. \\\\
+Expression SFINAE дает нам огромный потенциал, позволяя практически полностью перейти от шаблонных метафункций к привычным выражениям. \\\\
+Весьма распространенным примером использования Expression SFINAE является использование его с инфиксным оператором запятая. 
+Он вычисляет свои аргументы и возвращает правый.\\\\
+Используя эту особенность, мы можем перечислить все выражения, которые должны быть вычислены для SFINAE проверок, например в возвращаемом типе, и последним указать то, которое используется по факту. 
+Благодаря правой ассоциативности этого оператора, все перечисленные проверки будут проведены, и результатом нашего перечисления будет являться фактический возвращаемый тип.\\\\
+Посмотрим, насколько проще становится код с использованием оператора запятая и Expression SFINAE на примере функции \texttt{void print(T)}:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+decltype(std::declval<T>().cbegin(), std::declval<T>().cend(), void())
+print(T container)
+{
+	std::cout << "Values:{ ";
+	for(auto value : container)
+	std::cout << value << " ";
+	std::cout << "}\n";
+}
+
+template <typename T>
+decltype(std::cout << std::declval<T>(), void())
+print(T value)
+{
+	std::cout << "Value: " << value << "\n";
+}	
+\end{minted}
+Эта функция печатает объект T или как контейнер, или как примитвный тип.\\\\
+Раньше для проверки, что T является контейнером, мы проверяли наличие у него типа \texttt{const\_iterator} с помощью метафункции \texttt{is\_const\_iterator}.
+Для проверки, что T - примитвный тип использовалась метафункция \texttt{is\_integral<T>} из \texttt{std::type\_traits}.\\\\
+Сейчас же мы можем попытаться \textquotedblright вызвать\textquotedblright\ функции cbegin и cend, возвращающие \texttt{const\_iterator}, прямо в возвращаемом типе функции.
+Для проверки, что T может быть напечатан, как примитивный тип, мы можем напрямую написать выражение, передающее его в поток вывода. 
+Так мы достигаем абсолютной гарантии того, что он может быть напечатан.
+\subsubsection{Предпосылки к нововведению}
+В C++03 следующий код не компилировался, хотя стандарт того времени не запрещал подобное поведение:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <int I> struct A {};
+
+char xxx(int);
+char xxx(float);
+
+template <class T> A<sizeof(xxx((T)0))> f(T){}
+
+int main()
+{
+	f(1);
+}
+\end{minted}
+Рассмотрим его подробнее:
+\begin{enumerate}
+	\item Из контекста вызова f(1) успешно осуществляется вывод типа: \\
+		T $\rightarrow$ int
+	\item Выведенный тип подставляется в нужные места: \\
+	\texttt{A<sizeof(xxx((int)0))> f(int)}
+	\item Компилятор анализирует эту строчку, и находит выражение, которое не является constant expression, компиляция прерывается: \\
+	\texttt{xxx((int)0)} - не constant expression
+\end{enumerate}
+
+Такое поведение было связано с технической сложностью реализации подстановки template аргументов в общем случае. 
+Она осуществлялась с помощью упрощенного метода семантической проверки.
+Были специальные SFINAE правила, которые сильно отличались от обычной проверки выражений, вместо полной проверки семантики. Они были больше применимы именно для подстановки типов.\\\\
+В C++11 для решения этой проблемы было приянто решение разрешить вычисление обычных выражений при подстановке и большинство ошибок трактовать, как SFINAE-errors. \\
+
+Был составлен список ошибок, которые не будут трактоваться как SFINAE-errors:
+\begin{enumerate}
+\item Ошибки, вызванные при исполнении чего-то внешнего для выражения, т.е. вычислении выражений в так называемом non-immediate context (инстанцирование шаблона, генерация определения неявно-объявленного конструктора копирования).
+\item Ошибки, вызванные из-за несоблюдения
+ \href{https://gcc.gnu.org/onlinedocs/cpp/Implementation-limits.html}{\texttt{implementation\_limits}}.
+ \item Ошибки нарушения прав доступа.
+\end{enumerate}
+Все остальные ошибки было решено трактовать, как SFINAE-failures.
+\subsection{Default template arguments in function templates \& SFINAE}
+В С++11 появилась возможность устанавливать значения параметров шаблона функций по умолчанию. \\\\
+Вывод типов в шаблонах функций с аргументами по умолчанию производится следующим образом:
+\begin{enumerate}
+	\item Компилятор пытается вывести тип всех параметров шаблона.
+	\item Если какой-то параметр вывести не удалось, то используется его значение по умолчанию, если таковое имеется. В противном случае тип параметра не может быть выведен - deduction failure.
+\end{enumerate}
+Небольшой пример для лучшего понимания:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <class T, class U = double>
+void f(T t = 0, U u = 0);
+
+char c;	//any symbol
+
+void g()
+{
+	f(1, c);           // f<int,char>(1,c)
+	f(1);              // f<int,double>(1,0)
+	f();               // error: T cannot be deduced
+	f<int>();          // f<int,double>(0,0)
+	f<int,char>();     // f<int,char>(0,0)
+}
+\end{minted}
+Это нововведение можно использовать в SFINAE. Теперь мы можем писать SFINAE проверки прямо в аргументах шаблона функции по умолчанию, нисколько не меняя при этом сигнатуру функции (Шаблонная шапка не входит в сигнатуру). \\\\
+Рассмотрим в качестве примера реализацию функции модуля для знаковых чисел:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, 
+		  typename = enable_if<is_signed<T>::value>>::type * = nullptr>
+T abs(T val);
+\end{minted}
+Мы создаем безымянный шаблонный параметр, чтобы его невозможно было вывести из контекста вызова, и присваиваем ему значение по умолчанию, являющееся SFINAE проверкой. \\\\
+Достоиннством этого метода определенно является то, что SFINAE проверка осуществляется на более ранней стадии - при \textit{выводе} типа соответствующего параметра.
+Это эффективно в смысле временных затрат на компиляцию.\\\\
+Но у этого метода есть недостаток. Так как шаблонная шапка не входит в сигнатуру функции, мы не можем аналогично написать версию функции для другого случая.
+В нашем примере мы не можем добавить еще одну перегрузку для модуля от беззнаковых чисел:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, 
+		  typename = enable_if<is_signed<T>::value>>::type * = nullptr>
+T abs(T val) 
+{
+	return -val;
+}
+
+template <typename T, 
+		  typename = enable_if<!is_signed<T>::value>>::type * = nullptr>
+T abs(T val) 
+{
+	return val;
+}
+\end{minted}
+Данный код некорректен, так как функции имеют абсолютно одинаковую сигнатуру - нарушение one definition rule.
+\subsection{constexpr}
+Еще одним весьма полезным нововведением, делающим метапрогарммирование проще, является спецификатор \textbf{constexpr}. Он способствует еще большему перенесению вычислений некоторых выражений в compile-time. \\\\
+Для начала попробуем понять, что такое constant expression. \\ 
+\textbf{\textit{Constant expressions}} - это такие выражения, 
+которые могут быть использованы для указания размера статического массива или шаблонных аргументов, которые не являются типом.
+Их значение известно на момент компиляции.\\
+Пример:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int n = 1;
+std::array<int, n> a1;	// error: n is not a constant expression
+int arr[n];				// error: n is not a constant expression
+const int cn = 2;
+std::array<int, cn> a2;	// OK: cn is a constant expression
+int arr[cn];			// OK: cn is a constant expression
+\end{minted}
+Сonstexpr гарантирует возможность использования переменных или функций в местах, где требуется \textit{constant expression}.\\\\
+Рассмотрим отдельно значение constexpr для переменных и для функций.
+\subsubsection{Constexpr переменные}
+Переменные, объявленные как \textbf{constexpr}, должны удовлетворять следующим требованиям:
+\begin{enumerate}
+\item Должны быть проинициализирована сразу при объявлении.
+\item Выражение в инициализации должно быть \textit{constant expression}.
+\end{enumerate}
+\textbf{Constexpr} переменная по смыслу включает себя значение \textbf{const} переменной, но не наоборот.
+Вообще говоря, не все \textbf{const} переменные являются \textit{constant expressions}.\\\\
+Отличие \textbf{constexpr} переменных от \textbf{const} в том, что \textbf{const} гарантирует лишь то, что значение переменной не будет изменено. Оно может быть неизвестно на момент компиляции.\\\\
+Пример:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int f(int x) 
+{
+	if (x > 0)
+		return 10;
+	else
+		return 5;
+}
+
+int four()
+{
+	return 4;
+}
+
+const int m = four();
+int a[m];	// ошибка компиляции: m - не constant expression
+
+int main()
+{
+	int custom_v;
+	std::cin >> custom_v;
+	const int N = f(custom_v);
+	int b[N]; 	// ошибка компиляции: N - не constant expression
+	return 0;
+}
+\end{minted}
+\texttt{N} никак не может быть известно на момент компиляции, несмотря на то, что является \textbf{const}.
+Более того, \texttt{m} несмотря на свою логическую константность, не является \textit{constant expression}. \\\\
+Const переменная является \textit{constant expression} только если:
+\begin{enumerate}
+	\item Она является интегральным типом или перечислением. (см. таблицу \ref{tab:types} категорий типов)
+	\item Выражение, которым инициализируется начальное значение - \textit{constant expression}.
+\end{enumerate}
+Пример:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int main()
+{
+	const int N = 3;
+	int numbers[N] = {1, 2, 3};  // N is constant expression
+	return 0;
+}
+\end{minted}
+В данном случае N удовлетворяет тербованиям \textit{constant expression}.
+\subsubsection{Constexpr функции}
+Довольно полезная вещь, не имеющая аналогов до C++11. \\
+Объявление функции как \textbf{constexpr} гарантирует, что она является \textit{constant expression} и, как следствие, ее значение может быть посчитано на этапе компиляции. \\\\
+На \textbf{constexpr} функции накладываюстя довольно серьзеные требования:
+\begin{enumerate}
+\item Функция должна возвращать значение, являющееся \textbf{constexpr}.
+\item Аргументы функции должны быть \textbf{constexpr}.
+\item Функция может содержать следующие конструкции: \texttt{typedef}, различные вариации \texttt{using}, \texttt{static\_assert}, пустое выражение(;) и, собственно, \texttt{return}.
+\item Функция может содержать не более одного \texttt{return}.
+\end{enumerate}
+И дополнительно для \textbf{constexpr} функций-членов:
+\begin{enumerate}
+\item Метод не может быть виртуальным.
+\item Метод может быть объявлен с \texttt{=default} или c \texttt{=delete}.
+\item \textbf{constexpr} метод является \textbf{const}, по умолчанию.
+\end{enumerate}
+Возможна рекурсия. \\\\
+То есть, основная суть \textbf{constexpr} функции должна содержаться в единственном return statement.
+Из-за таких ограничений в \textbf{constexpr} функциях повсеместно используют тернарный оператор, 
+что делает стиль написания похожим на написание программ на функциональном языке программирования. \\\\
+Constexpr функции могут быть использованы для метапрограммирования в дополнение к привычным шаблонам. 
+Пример:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<class Base, class Derived>
+constexpr bool isBaseOf()
+{
+	return std::is_base_of<Base, Derived>::value;
+}
+\end{minted}
+Теперь, чтобы проверить является ли один класс базой для другого, мы можем просто вызвать функцию: \\
+\texttt{isBaseOf<Base, Derived>()} \\
+Это значительно улучшает код, делая его гораздо проще для понимания и читабельнее.
+\subsection{if constexpr}
+В C++17 появилась конструкция \textbf{if constexpr}. \\\\
+Позволяет, используя прямой синтаксис, создавать compile-time условие:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+if constexpr(/*condition*/)
+{
+	/*...*/
+} else /../
+\end{minted}
+condition должно являться \textit{constant expression} типа bool. \\\\
+В отличии от обычного if statement-a не треует корректности(well-formed) выражений в false ветке. \\\\
+Рассмотрим как пример функцию модуля знаковых/беззнаковых чисел с использование if constexpr:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+T abs(T value) {
+	if constexpr(is_signed<T>::value) {
+		return (value < 0 ? -value : value);
+	} else {
+		reutrn value;
+	}
+}
+\end{minted}
+Как мы можем видеть, код по синтаксису не отличается от run-time версии с обычным условием. Никаких двух специализаций шаблона функции. \\\\ 
+Казалось бы, такое мощное средство позволяет нам полностью избавиться от необходимости 
+использования косвенных SFINAE проверок, использующих шаблоны. Но в действительности, это не так.
+If constexpr не может в полной мере заменить SFINAE. \\\\
+Представим, что мы хотим сделать compile-time условие, в зависимости от которого перегрузки от некоторых типов, назовем их \textquotedblright плохими\textquotedblright, не будут генерироваться в коде вовсе.
+С помощью SFINAE мы с легкостью можем сделать это так:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<typename T>
+enable_if<is_good<T>::value>::type foo(T) {
+	/*...body...*/
+}
+\end{minted}
+Вызов \texttt{foo(Goo\_Type)} будет совершен успешно, вызов \texttt{foo(Bad\_Type)} приводит к ошибке компиляции.
+Все работает так, как мы и хотели. \\\\
+Теперь попробуем переписать с использованием \textbf{if constexpr} вместо SFINAE:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void foo(T x) 
+{
+	if constexpr(is_good<T>::value) 
+	{
+		/*...body...*/
+	}
+	// cant write something to discard call from bad_type
+}
+\end{minted}
+Заметим, что во втором случае вызов \texttt{foo(Bad\_Type)} - будет корректным и не приведет к ошибке компиляции. \\
+Дело в том, что в версии с \textbf{if constexpr} поверка осуществляется на более поздней стадии - на стадии, когда мы уже внутри тела функции, когда код уже сгенерирован.
+Мы не имеем средств, чтобы \textquotedblright подавить\textquotedblright\ вызов, будучи внутри функции.
+\subsection{Static assertions}
+Предоставляет возможность писать compile-time asserts. \\\\
+Синтаксис: \\
+\texttt{static\_assert(condition, message)} \\\\
+где \texttt{condition} - это \textit{constant expression} типа bool, \texttt{message} - строковый литерал, сообщение выдаваемое при срабатывании ассерта. \\\\
+В случае condition $=$ false, происходит ошибка компиляции, печатается сообщение message, иначе ничего не происходит. \\\\
+Можно рассматривать \textbf{static assertions} как альтернативу SFINAE, аналогично \textbf{if constexpr}, рассмотренному ранее. \\
+Модернизируем предыдущий пример, используя static assertion:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void foo(T x) 
+{
+	if constexpr(is_good<T>::value) {
+		/*...body...*/
+	} else {
+		static_assert(false, "No function foo() for Bad Types")
+	}
+}
+\end{minted}
+Теперь при вызове \texttt{foo(Bad\_Type)} действительно имеем ошибку компиляции, но это, опять же, не то, что нужно. \\
+Перегрузка от плохого типа на самом деле есть, но при входе в нее происходит ошибка компиляции. Это не то же самое, что перегрузки нет. \\
+К примеру, SFINAE проверка на наличие перегрузки от плохого типа в нашем случае будет возвращать \texttt{true}, что противоречит тому, что мы хотели.
+\subsection{Template variables}
+В С++14 появилась возможность создавать шаблонные переменные.
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+constexpr T pi = T(3.14159265);
+
+float x = pi<double>;
+float y = pi<float>;
+\end{minted}
+Шаблонные переменные обязаны быть \textbf{constexpr}. Допускаются специализациии. \\\\
+Наиболее часто применяются для упрощения метафункций из \texttt{std::type\_traits}. \\
+Рассмотрим на примере \texttt{is\_same}:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename U>
+constexpr bool is_same_v = is_same<U, V>::value;
+\end{minted}
+Теперь вместо \texttt{is\_same<T, U>::value} можем писать просто \texttt{is\_same\_v<T, U>}. \\\\
+В C++14 все метафункции, возвращающие значение, имеют соответствующие шаблонные переменные с суффиксом \texttt{\_v}.
+\subsection{Type alias \& Alias template}
+\textbf{Type alias} - это псевдоним типа, объявленного ранее(подобно \texttt{typedef}). \textbf{Template alias} - псевдоним для шаблона.\\\\
+\textbf{Type alias} можно использовать, как альтернативу \texttt{typedef}: \\\\
+\texttt{using mytype = int;} \\\\
+\textbf{Alias template} позволяет написать собственный псевдоним с шаблонным параметром, например: \\
+\texttt{vector< T, mmap\_allocator<T> > $\longmapsto$ my\_vector<T>} \\
+Синтаксис:
+\begin{minted} [frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+using my_vector = vector<T, mmap_allocator<T>>;
+\end{minted}
+Как и \textbf{template variables}, \textbf{alias templates} используются для упрощения \texttt{std::type\_traits}. \\\\
+В C++14 все метафункции, возвращающие тип, имеют соответсвующий \textbf{alias template} с суффиксом \texttt{\_t} (\texttt{enable\_if\_t<T, U>}).\\
+Позволяют сильно упростить код, так как пропадает необходимость писать \texttt{typename} и \texttt{::type}.
+\subsection{Явное инстанцирование шаблонов. Подавление инстанцирования.}
+Явное инстанцирование шаблона позволяет сгенерировать код шаблонной функции или класса для конкретных параметров без использования его в коде. \\\\
+Синтаксис:
+\begin{minted} [frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T> 
+class my_class {}
+
+template <typename T, typename U, typename V>
+V f(T, U) {}
+
+template class my_class<int>; // for classes
+template double f(int, char); // for functions
+\end{minted}
+При таком инстанцировании инстанцируются все не-template мемберы. \\\\
+
+В C++11 появилась возможность подавления неявного инстанцирования шаблона. \\\\
+Синтаксис:
+\begin{minted} [frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+extern template class my_class<int>; // for classes
+extern template double f(int, char); // for functions
+\end{minted}
+Можно использовать это для уменьшения количества генерируемого кода. Например, можно подавить инстанцирование в header-файле и явно проинстанцировать в одном cpp-файле. \\
+Так оптимизируется время компиляции.
+\section{std::type\_traits}
+\texttt{std::type\_traits} - это библиотека, которая содержит множество полезных метафункции для работы с классами. В этой части будет проведен её обзор. \\\\
+\subsection{Вспомогательные типы}
+\begin{itemize}
+	\item \texttt{\textbf{integral\_constant<class T, T v}>} \\\\
+	Создает константу времени компиляции типа T со значением v.
+	\item \texttt{\textbf{true\_type}} = integral\_constant<bool, true>
+	\item \texttt{\textbf{false\_type}} = integral\_constant<bool, false>
+\end{itemize}
+Довольно удобно наследоваться от последних двух при написании своих метафункций:
+\begin{minted} [frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<class T, class U>
+struct is_same : std::false_type {};
+
+template<class T>
+struct is_same<T, T> : std::true_type {};
+\end{minted}
+\subsection{Проверка на принадлежость типа к определенной категории}
+\begin{table}[H]
+	\caption{\label{tab:types} Категории типов}
+	\begin{center}
+\begin{tabular}{|c|c|c|c|c|}
+	\hline 
+	& \textbf{primary categories} & \multicolumn{3}{|c|}{\textbf{composite categories}} \\ 
+	\hline 
+	\multirow{4}{*}{\textbf{fundamental}} & void &  &  &  \\ 
+	\cline{2-5}
+	& std::nullptr\_t &  & \multirow{7}{*}{scalar} & \multirow{10}{*}{object} \\ 
+	\cline{2-3} 
+	& integral & \multirow{2}{*}{arithmetic} &  & \\ 
+	\cline{2-2} 
+	& floating\_point  &  &  &  \\ 
+	\cline{1-3} 
+	\multirow{10}{*}{\textbf{compound}}& pointer &  &  &  \\ 
+	\cline{2-3} 
+	& member\_object\_pointer  & \multirow{2}{*}{member\_pointer}  &  &  \\ 
+	\cline{2-2} 
+	& member\_function\_pointer  &  &  &  \\ 
+	\cline{2-3} 
+	& enum &  &  &  \\ 
+	\cline{2-4} 
+	& union &  &  &  \\ 
+	\cline{2-4} 
+	& class* &  &  &  \\ 
+	\cline{2-4} 
+	& array &  &  &  \\ 
+	\cline{2-5} 
+	& l\_value\_reference  & \multirow{2}{*}{reference} &  &  \\ 
+	\cline{2-2} \cline{4-5} 
+	& r\_value\_reference &  &  &  \\ 
+	\cline{2-5} 
+	& function  &  &  &  \\ 
+	\cline{1-5} 
+	\multicolumn{5}{|c|}{* = excluding unions} \\ 
+	\hline 
+\end{tabular}
+\end{center}
+\end{table}
+К интегральному типу относятся следующе встроенные типы:\\\\
+\texttt{bool, char, char16\_t, char32\_t, wchar\_t, short, int, long, long long}. \\\\
+\textbf{type\_traits} предоставляет набор метафункций, позволяющих проверить, принадлежит ли тип T к какой-либо категории из приведенных в таблице выше. \\\\
+Название таких метафункций имеет вид: \texttt{is\_/*название\_категории*/}.
+\subsection{Проерка типа на наличие определенных свойств}
+В C++11 поддерживается широкий набор метафункций для проверки наличия у типа определенных свойств. Рассмотрим основные из них:
+\begin{itemize}
+\item \textbf{\texttt{is\_const}} \\\\
+Проверяет наличие спецификатора const или const volaitile.
+\item \textbf{\texttt{is\_volatile}} \\\\
+Проверяет наличие спецификатора volaitile или const volaitile.
+\item \textbf{\texttt{is\_signed}} \\\\
+Проверяет, что если тип является арифметическим, то выражение T(-1) < T(0) = true.
+То есть тип - знаковый.
+\item \textbf{\texttt{is\_unsigned}} \\\\
+Проверяет, что если тип является арифметическим, то выражение T(0) < T(-1) = true.
+То есть тип - беззнаковый.
+\item \texttt{\textbf{is\_trivially\_copyable}} \\\\
+Проверяет, что тип - \textit{тривиально копируемый}. \\\\
+Тип считается \textit{тривиально копируемым}, если:
+\begin{enumerate} 
+\item Любой его конструктор копирования, move конструктор, копирующий оператор присваивания, 
+move оператор присваивания является \textit{тривиальным} или помечен как deleted.
+\item Хотя бы один из перечисленных не помечен как deleted.
+\item Имеет \textit{тривиальный} деструктор, не помеченный как deleted.
+\end{enumerate}
+Все типы, совместимые с C, тривиально копируемы. \\\\
+Конструктор копирования, move конструктор, копирующий оператор присваивания, 
+move оператор присваивания (далее - операция) в классе T называется \textit{тривиальным}, если:
+\begin{enumerate} 
+\item Он не определен пользователем (определен неявно, или помечен как default).
+\item T не имеет виртуальных функций.
+\item T не имеет вирутальных баз.
+\item Соответсвующая операция, выбирающаяся для прямой базы T, тривиальна.
+\item Соответсвующая операция, выбирающаяся для каждого не статического класса-мембера, тривиальна.
+\end{enumerate}
+Конструктор/деструктор называется \textbf{\textit{тривиальным}}, если:
+\begin{enumerate}
+	\item Он не определен пользователем (определен неявно или помечен как default).
+	\item Он не виртуальный.
+	\item Все прямые базы класса имеют тривиальный конструктор/деструктор.
+	\item Все не статические мемберы класса имеют тривиальный конструктор/деструктор.
+\end{enumerate}
+За счет наложенных ограничений тривиально копируемый тип может копироваться побайтово. Например, с помощью \texttt{std::memcpy}.
+\item \textbf{\texttt{is\_trivial}} \\\\
+Тип считается тривиальным, если он:
+\begin{enumerate}
+\item Тривиально копируемый.
+\item Имеет хотя бы 1 конструктор по умолчанию, все они \textbf{\textit{тривиальны}} или помечены как deleted,
+и хотя бы 1 из них не помечен как deleted.
+\end{enumerate}
+\item \texttt{\textbf{is\_constructible}} $(1)$\\
+		\texttt{\textbf{is\_trivially\_constructible}} $(2)$\\
+		\texttt{\textbf{is\_nothrow\_constructible}} $(3)$\\\\
+Имеет аргументы: template<class T, class... Args>
+\begin{enumerate}
+\item Проверяет, что выражение \texttt{T obj(std::declval<Args>()}, вызывающее констурктор от типа корректно.
+\item Проверяет (1) и что вызов конструктора не вызвыает \textit{не тривиальных} операций.
+\item Проверяет (1) и что вызов конструктора noexcept.
+\end{enumerate}
+Есть аналогичные метафункции, проверяющие \texttt{default\_constructible, copy\_constructible, move\_constructible}. Они выражаются через соответствующие версии \texttt{is\_constructible}.
+\textbf{\texttt{\item is\_assignable}} $(1)$ \\
+\textbf{\texttt{is\_trivially\_assignable}} $(2)$ \\
+\textbf{\texttt{is\_nothrow\_assignable}} $(3)$ \\\\
+Имеет аргументы: template<class T, class U> 
+\begin{enumerate}
+\item Проверяет, что выражение \texttt{std::declval<T>() = std::declval<U>()}, вызывающее оператор присваивания корректно.
+\item Проверяет (1) и что вызов конструктора не вызвыает \textit{не тривиальных} операций.
+\item Проверяет (1) и что вызов конструктора noexcept
+\end{enumerate}
+Есть аналогичные метафункции, проверяющие \texttt{copy\_assignable, move\_assignable}. Они выражаются через соответствующие версии \texttt{is\_assignable}. \\\\
+\item Абсолютно аналогично строится тройка метафункций 
+\texttt{\textbf{is\_destructible, is\_trivially\_destructible, is\_nothrow\_destructible}}
+и пара \texttt{\textbf{is\_swapable, is\_nothrow\_swapable}}.
+\end{itemize}
+\subsection{Взаимоотношения типов}
+\begin{itemize}
+	\item \textbf{\texttt{is\_same<T, U>}} - проверяет, что типы T и U совпадают.
+	\item \textbf{\texttt{is\_base\_of<Base, Derived>}} - проверяет, что Derived наследуется от Base или они совпадают.
+	\item \textbf{\texttt{is\_convertible<From, To>}} - проверяет корректность следующего определения функции: 
+	\\\\ \texttt{To test() \{ return std::declval<From>(); \}}\\\\
+	что обеспечивает возможность неявного конвертирования From в To.
+\end{itemize}
+\subsection{Трансформирование типов}
+Также в \textbf{type\_traits} определены средства трансформации типов, имеющие интуитивно понятные названия:
+\begin{itemize}
+\item 	\texttt{\textbf{remove\_cv}}
+\item	\texttt{\textbf{remove\_const}}
+\item	\texttt{\textbf{remove\_volatile}}
+\item	\texttt{\textbf{add\_cv}}
+\item	\texttt{\textbf{add\_const}}
+\item	\texttt{\textbf{add\_volatile}}
+\item	\texttt{\textbf{remove\_reference}}
+\item	\texttt{\textbf{add\_lvalue\_reference}}
+\item	\texttt{\textbf{add\_rvalue\_reference}}
+\item	\texttt{\textbf{remove\_pointer}}
+\item	\texttt{\textbf{add\_pointer}}
+\end{itemize}
