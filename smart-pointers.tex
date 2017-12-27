@@ -1,0 +1,166 @@
+\section{Умные указатели}
+
+Рассмотрим следующий код:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+container* create_container()
+{
+    container* c = new container();
+    fill(*c);
+    return c;
+}
+\end{minted}
+
+В приведенном коде, при возникновении исключения в функции fill, это исключение пролетит наружу функции create\_container. Однако выделенный с помощью new контейнер c не будет освобожден. Возможным способом исправления этой ошибки является использование try…catch блока:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+container* create_container()
+{
+    container* c = new container();
+    try
+    {
+        fill(*c);
+    }
+    catch(...)
+    {
+        delete c;
+        throw;
+    }
+    return c;
+}
+\end{minted}
+
+Такой способ применим если лишь к простейшим функциям. При начилии нескольких объектов, которые требуется удалить или в присутствии сложного control-flow такое использование try...catch становится непрактичным.
+
+Для решения этой проблемы в C++11 появились классы умных указателей (\mintinline{c++}{std::unique_ptr}, \mintinline{c++}{std::shared_ptr} и \mintinline{c++}{std::weak_ptr}). Эти классы являются RAII-обертками над обычными указателями, которые в своём деструкторе делают \mintinline{c++}{delete} тому объекту, на который они ссылаются. При использовании \mintinline{c++}{std::unique_ptr} приведенный выше (корректный) код может быть записан следующим образом:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+std::unique_ptr<container> create_container()
+{
+    std::unique_ptr<container> c(new container());
+    fill(*c);
+    return c;
+}
+\end{minted}
+
+\subsection{unique\_ptr}
+Самым простым умным указателем является \mintinline{c++}{std::unique_ptr}.
+Внутри себя \mintinline{c++}{std::unique_ptr} хранит один указатель \mintinline{c++}{T* ptr} и делает ему \mintinline{c++}{delete} в дескрукторе.
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template<class T>
+class unique_ptr
+{
+private:
+    T* ptr;
+public:
+    ~unique_ptr()
+    {
+        delete ptr;
+    }
+    ...
+}
+\end{minted}
+
+\mintinline{c++}{std::unique_ptr} имеет операторы \mintinline{c++}{*} и \mintinline{c++}{->}, поэтому им можно пользоваться как обыным указателем:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+T& operator*() const { return *ptr; }
+T* operator->() const noexcept { return ptr; }
+\end{minted}
+
+\mintinline{c++}{std::unique_ptr} имеет следующие функции:
+
+\mintinline{c++}{get()} --- возвращает ptr, хранящийся внутри. \mintinline{c++}{get()} может использоваться если необходимо передать в некоторую функцию сырой указатель на объект, а имеется \mintinline{c++}{unique_ptr} на него.
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+T* get() const { return ptr; }
+\end{minted}
+
+\mintinline{c++}{release()} --- зануляет ptr, хранящийся внутри, а старое значение возвращает наружу. \mintinline{c++}{release()} может использоваться если необходимо передать в некоторую функцию сырой указатель на объект и известно, что эта функция самостоятельно удалит переданный объект.
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+T* release()
+{
+    T* tmp = ptr;
+    ptr = nullptr;
+    return tmp;
+}
+\end{minted}
+
+\mintinline{c++}{reset(p)} - заменяет ptr, хранящийся внутри, на p, и делает \mintinline{c++}{delete} старому ptr.
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+void reset(T* p)
+{
+    delete ptr;
+    ptr = p;
+}
+\end{minted}
+
+Оператор присваивания и конструктор копирования у \mintinline{c++}{unique_ptr} явно запрещены:
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+unique_ptr(unique_ptr& other) = delete;
+unique_ptr& operator=(unique_ptr& other) = delete;
+\end{minted}
+При попытке скопировать или присвоить \mintinline{c++}{unique_ptr} выдаётся ошибка на этапе компиляции.
+
+\mintinline{c++}{unique_ptr} имеет move-оператор присваивания и move-конструктор, которые зануляют указатель, стоящий справо:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+unique_ptr& operator=(unique_ptr&& other) noexcept
+{
+    reset(other.release());
+    return *this;
+}
+
+unique_ptr(unique_ptr&& other) noexcept
+    : ptr(other.release())
+{}
+\end{minted}
+
+\subsection{Владение}
+Ответственность за удаление объекта называется владением. Например, unique\_ptr ответственен за удаление объекта на который он ссылается, соответственно говорят, что unique\_ptr владеет объектом, на который он ссылается. Про функцию \mintinline{c++}{reset(p)} говорят, что она передает владение объектом unique\_ptr'у, а функция \mintinline{c++}{release()}, наоборот, забирает владение объектом у unique\_ptr'а.
+
+Термин владение применяется не только к умным указателям, например можно сказать, что std::vector владеет памятью выделенной под свои элементы (обязан её освободить), а также владеет своими элементами (обязан вызывать им деструктор).
+
+В некоторых случаях объект может иметь несколько владельцев. Это называется разделяемым владением и работает следующим образом: пока существует хотя бы один владелец объект продолжает жить, когда пропадает последний владелец --- объект удаляется. Для умных указателей существует два способа реализации разделяемого владения: подсчет ссылок и провязка всех владельцев в двусвязный список. Оба подхода имеют свои преимущества и недостатки. Подсчет ссылок применяется во включенном в стандартную библиотеку указателе std::shared\_ptr. Указатель использующий провязку владельцев в двусвязный список в стандартной библиотеке отсутствует, но часто называется linked\_ptr.
