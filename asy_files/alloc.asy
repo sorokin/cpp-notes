@@ -1,14 +1,14 @@
 settings.outformat = "pdf";
 
-real linked = 236;
-real shared = 604;
-real intrusive = 180;
-real unique = 225;
-real linked_disp = 5;
-real shared_disp = 8;
-real intrusive_disp = 3;
-real unique_disp = 1;real bench_width = 311.0;
-real max_height = 604;
+real linked = 221;
+real shared = 572;
+real intrusive = 214;
+real unique = 239;
+real linked_disp = 0;
+real shared_disp = 2;
+real intrusive_disp = 8;
+real unique_disp = 6;real bench_width = 312.0;
+real max_height = 572;
 
 real arrow_offset = bench_width / 4.0 * 1.1;
 real point_offset = arrow_offset * 2 / 3;
@@ -105,14 +105,14 @@ label("std::shared\underline{\hspace{0.3cm}}ptr", (shared_offset - label_offset,
 label("boost::intruisive\underline{\hspace{0.3cm}}ptr", (intrusive_offset - label_offset, intrusive + label_delta), black);
 label("std::unique\underline{\hspace{0.3cm}}ptr", (unique_offset - label_offset, unique + label_delta), black);
 label("allocation/deallocation benchmark : ", (bench_width * 2.0, max_height * 1.1));
-real linked = 183;
-real shared = 366;
-real intrusive = 181;
-real unique = 183;
-real linked_disp = 1;
-real shared_disp = 3;
-real intrusive_disp = 0;
-real unique_disp = 1;path lin = box((arrow_offset,0), (linked_offset,linked));
+real linked = 178;
+real shared = 357;
+real intrusive = 195;
+real unique = 178;
+real linked_disp = 4;
+real shared_disp = 9;
+real intrusive_disp = 3;
+real unique_disp = 4;path lin = box((arrow_offset,0), (linked_offset,linked));
 fill(lin, black);
 
 path sha = box((linked_offset,0), (shared_offset,shared));
