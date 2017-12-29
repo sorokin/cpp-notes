@@ -1,0 +1,292 @@
+\section{Анонимные функции}
+\subsection{Передача функции в качестве параметра}
+Иногда требуется передать функцию в качестве параметра в другую функцию.
+Пример такой ситуации~--- вызов \mintinline{c++}{std::sort} с нестандартным компаратором.
+
+\mintinline{c++}{std::sort} принимает третьим параметром объект, у которого определён \mintinline{c++}{operator ()}.
+Тип этого объекта задаётся параметром шаблона. \mintinline{c++}{std::sort} вызывает этот оператор у объекта, чтобы произвести сравнение.
+
+В качестве такого объекта может выступать указатель на функцию:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    bool cmp(int x, int y) {
+        return x % 10 < y % 10;
+    }
+    std::vector<int> a;
+    // ... 
+    std::sort(a.begin(), a.end(), cmp);
+\end{minted}
+
+Сама функция \mintinline{c++}{std::sort} выглядит следующим образом:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    template <class Iterator, class Compare>
+    void sort (Iterator first, Iterator last, Compare comp) {
+        // ...
+        if (comp(x, y)) {
+            // ...
+        }
+        // ...
+    }
+\end{minted}
+
+\subsubsection{Функциональные объекты}
+Может потребоваться передать в передаваемую функцию какие-то дополнительные параметры.
+Например, нужно отсортировать числа, как в предыдущем примере, но вместо фиксированного модуля $10$
+требуется использовать значение некоторой переменной. Чтобы сделать это, передавая указатель на функцию,
+придётся сделать эту переменную глобальной:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    int k;
+    bool cmp(int x, int y) {
+        return x % k < y % k;
+    }
+    // ... 
+    k = 10;
+    std::sort(a.begin(), a.end(), cmp);
+\end{minted}
+
+У такого подхода есть ряд недостатков: создаётся глобальная переменная, которая используется только при вызове
+\mintinline{c++}{std::sort}, невозможно выполнять этот код многопоточно с разными значениями $k$.
+
+Вместо этого можно передать объект, который содержит в себе нужную переменную и имеет \mintinline{c++}{operator ()}:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    struct Cmp {
+        int k;
+        Cmp(int nk): k(nk) {}
+        bool operator () (int x, int y) const {
+            return x % k < y % k;
+        }
+    };
+    int k = 10;
+    std::sort(a.begin(), a.end(), Cmp(k));
+\end{minted}
+
+Если требуется изменять изнутри компаратора локальные переменные функции, вызывающей \mintinline{c++}{std::sort}, можно
+сохранить в этот объект ссылки на них.
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    struct Cmp {
+        int k;
+        int &cnt;
+        Cmp(int nk, int &ncnt): k(nk), cnt(ncnt) {}
+        bool operator () (int x, int y) const {
+            ++cnt;
+            return x % k < y % k;
+        }
+    };
+    int cnt = 0;
+    int k = 10;
+    std::sort(a.begin(), a.end(), Cmp(k, cnt));
+\end{minted}
+
+Недостаток такого подхода~--- громоздсксть. Приходится писать целый класс, у которого содержательная часть~--- только
+\mintinline{c++}{operator ()}. C++11 предоставляет способ создавать функциональные объекты меньшим количеством кода.
+
+\subsection{Синтаксис лямбда-функций}
+Лямбда-функции (или анонимные функции)~--- это способ создавать функцинальные объекты в C++11.
+Пример из предыдущего раздела может быть реализован следующим образом с применением лямбда-функции:
+
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    int cnt = 0;
+    int k = 10;
+    std::sort(a.begin(), a.end(), [k, &cnt] (int x, int y) {
+        ++cnt;
+        return x % k < y % k;
+    });
+\end{minted}
+
+Такой код создаёт анонимный класс, аналогичный классу \mintinline{c++}{Cmp} из примера выше, и передаёт его эксемпляр в
+\mintinline{c++}{std::sort}.
+
+Синтаксис лямбда-функции выглядит следующим образом:
+
+\mintinline{c++}{[capture list] (params) specifiers exception -> ret { body }}
+
+\begin{itemize}
+    \item \emph{capture list}~--- список переменных, которые будут доступны изнутри лямбды. Переменные могут передаваться
+    по значению и по ссылке.
+    \begin{itemize}
+        \item \mintinline{c++}{[]}~--- квадратные скобки нужно писать, даже если capture list пустой.
+        \item \mintinline{c++}{[a,b,c]}~--- захват переменных по значению.
+        \item \mintinline{c++}{[&a,&b,&c]}~--- захват переменных по ссылке.
+        \item \mintinline{c++}{[a,&b,c]}~--- захват по ссылке и по значению можно смешивать.
+        \item \mintinline{c++}{[=]}~--- захват всех переменных, к которым обращается лямбда, по значению.
+        \item \mintinline{c++}{[&]}~--- то же самое, но по ссылке.
+        \item \mintinline{c++}{[&,a,b]}~--- захват $a$ и $b$ по значению, а всего остального~--- по ссылке.
+        \item \mintinline{c++}{[=,&a,&b]}~--- захват $a$ и $b$ по ссылке, а всего остального~--- по значению.
+        \item \mintinline{c++}{[this]}~--- захват \mintinline{c++}{this} той функции, в которая объявлена лямбда.
+        \mintinline{c++}{[=]} и \mintinline{c++}{[&]} тоже захватывают \mintinline{c++}{this}.
+        \item C++14: \mintinline{c++}{[x = 2 + 3]}~--- то же самое, что и захват по значению новой переменной $x$ с
+        заданным значением. Можно захватывать move-only типы: \mintinline{c++}{[x = std::move(x)]}
+        \item C++14: \mintinline{c++}{[&x = a]}~--- захват ссылки на $a$ с именем $x$. Вместо $a$ может быть не только
+        переменная, но и любая ссылка, например, на элемент массива.
+    \end{itemize}
+    Переменные, захваченные по значению, нельзя изменять изнутри лямбды, если не указан спецификатор \mintinline{c++}{mutable}.
+    \item \emph{params}~--- список параметров функции.
+    Значения параметров по умолчанию не разрешены до C++14.
+    \item \emph{specifiers}:
+    \begin{itemize}
+        \item \mintinline{c++}{mutable}~--- разрешает изменять переменные, захваченные по значению, и вызывать у них
+        не-const методы. Поскольку при захвате по значаению переменные копируются, их изменение не повлияет на значения
+        переменных, которые были захвачены.
+    \end{itemize}
+    \item \emph{exception}~--- можно указать спецификаторы \mintinline{c++}{throw}, \mintinline{c++}{noexcept},
+    как у обычных функций.
+    \item \emph{ret}~--- тип возвращаемого значения. Если не указан, то тип будет выведен автоматически. Также, если тип
+    не указан, а параметров функция не прининмает, можно не писать круглые скобки для параметров.
+\end{itemize}
+
+\subsection{Устройство функционального объекта}
+Каждая лямбда-функция~--- это отдельный тип, называемый \emph{closure type}. Он содержит
+
+\begin{itemize}
+    \item \mintinline{c++}{operator ()} с заданными параметрами и типом возвращаемого значения.
+    Если лямбда не имеет спецификатора \mintinline{c++}{mutable}, оператор является \mintinline{c++}{const}.
+    \item Конструктор копирования и move-конструктор. Конструктор по умолчанию отсутствует.
+    \item \mintinline{c++}{ClosureType& operator=(const ClosureType&) = delete;}
+    \item Члены класса: захваченные по значению переменные, ссылки на захваченные по ссылке переменные.
+    \item Если capture list пустой, то closure type может неявно приводиться к указателю на функцию с соответствующей сигнатурой.
+\end{itemize}
+
+\subsection{Сохранения лямбда-функций в переменные}
+
+Лямбда-функцию можно не только куда-то передать, но и сохранить в переменную или вернуть из функции.
+Поскольку тип лямбды не имеет имени, для объявления переменной или функции следует использовать \mintinline{c++}{auto}.
+
+Обратите внимание, что захват переменных по ссылке не продлевает их время жизни. Например, следующий код
+будет работать неправильно:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    auto foo() {
+        std::vector<int> v;
+        return [&v] {
+            // ...
+        };
+    }
+\end{minted}
+Вектор $v$ будет уничтожен при выходе из функции, поэтому обращение к нему из лямбды приведёт к
+неопределённому поведению. В этом случае необходимо захватывать по значению.
+
+При копировании лямбды копируются все захваченные по значению переменные.
+
+Поскольку каждая лямбда~--- отдельный тип, возникают определённые трудности:
+\begin{itemize}
+    \item Нельзя завести переменную, которая может хранить лямбду не какого-то фиксированного типа, или завести массив разных лямбд.
+    \item Нельзя вернуть из функции лямбду не фиксированного типа.
+    \item Если нужно принять лямбду в функцию, приходится делать её шаблонной.
+\end{itemize}
+Те же проблемы есть и у обычных функциональных объектов. Их можно разрешить при помощи \mintinline{c++}{std::function}.
+
+\subsubsection{std::function}
+
+\mintinline{c++}{std::function}~--- это класс, принимающий в качестве парамерв шаблона типы аргументов и возвращаемого
+значения функции. В него можно записать любой объект с оператором \mintinline{c++}{()} с заданной сигнатурой:
+лямбду, обычный функциональный объект или указатель на функцию. Класс похож на \mintinline{c++}{std::any},
+но предназначен для хранения функциональных объектов и имеет \mintinline{c++}{operator ()}.
+
+Поскольку функциональные объекты могут иметь разный размер, \mintinline{c++}{std::function} может выделять для них
+дополнительную память.
+
+Поскольку \mintinline{c++}{std::function}~--- один тип для всех функцинальных объектов с заданной сигнаурой,
+в переменную такого типа можно сохранить любой подходящий функциональный объект, их можно без проблем
+складывать в коллекции или возвращать из функций.
+
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    #include <functional> // std::function определён в этом заголовочном файле
+
+    int bar(int a, int b) {
+        return a * b;
+    }
+
+    int main() {
+        int n = 5;
+        std::function<int(int, int)> foo = [n](int x, int y) {
+            return x * n + y;
+        };
+        std::function<double(double)> foo2 = [n] (double x) { return n * x; };
+
+        foo = bar; // Можно хранить в std::function обычные указатели на функции
+
+        // std::function можно складывать в коллекции
+        std::vector<std::function<double(double)>> fs = {cos, sin, foo2};
+        std::cout << fs[0](0.1) << "\n";
+        std::cout << fs[1](0.1) << "\n";
+        std::cout << fs[2](0.1) << "\n";
+    }
+\end{minted}
+
+\mintinline{c++}{std::function} можно копировать. Неинициализированный \mintinline{c++}{std::function}
+не содержит никакого функционального объекта, при попытке вызова бросается \mintinline{c++}{std::bad_function_call}.
+Сделать \mintinline{c++}{std::function} пустым можно, присвоив ему \mintinline{c++}{nullptr},
+также с \mintinline{c++}{nullptr} можно сравнивать.
+
+\subsubsection{Рекурсивный вызов лямбда-функции}
+Следующий код не скомпилируется:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    auto fact = [&fact] (int n) -> int {
+        if (n == 0)
+            return 1;
+        return n * fact(n - 1);
+    };
+    std::cout << fact(5) << "\n";
+\end{minted}
+
+Это происходит из-за того, что тип переменной $fact$ ещё не выведен в момент её использования.
+Чтобы можно было вызвать лямбду рекурсивно, нужно сохранить её в \mintinline{c++}{std::function}:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    std::function<int(int)> fact = [&fact] (int n) -> int {
+        if (n == 0)
+            return 1;
+        return n * fact(n - 1);
+    };
+    std::cout << fact(5) << "\n";
+\end{minted}
+
+Обратите внимание, что $fact$ захватывается по ссылке. В этом случае нельзя захватывать по значению, так
+как в момент захвата переменной $fact$ ещё не присвоено значение.
+
+Если нужно объявить несколько лямбда-функций, которые вызывают друг друга, нужно разделить объявление переменной и
+призваивание ей значения:
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    std::function<int(int)> foo2;
+    std::function<int(int)> foo1 = [&] (int n) -> int {
+        if (n == 0)
+            return 1;
+        return n * foo2(n - 1);
+    };
+    foo2 = [&] (int n) -> int {
+        if (n == 0)
+            return 1;
+        return 5 + foo1(n - 1);
+    };
+    std::cout << foo2(7) << "\n";
+\end{minted}
+
+В этом примере $foo1$ можно сделать не \mintinline{c++}{std::function}, а просто \mintinline{c++}{auto},
+так как она не используется изнутри себя.
+
+\subsection{Примеры}
+
+\subsubsection{Поиск в глубину}
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    std::vector<int> dfs(std::vector<std::vector<int>> const& e) {
+        std::vector<int> tin(e.size(), -1);
+        int t = 0;
+        std::function<void(int)> go = [&] (int v) {
+            if (tin[v] != -1)
+                return;
+            tin[v] = t++;
+            for (int nv : e[v])
+                go(nv);
+        };
+        go(0);
+        return tin;
+    }
+\end{minted}
+
+\subsubsection{Упрощённый bind}
+\begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+    template < typename Callable, typename... Ps >
+    auto bind(Callable f, Ps... ps) {
+        return [f, ps...] () {
+            return f(ps...);
+        };
+    }
+\end{minted}
+Этот пример демонстрирует, что лямбды можно использовать с variadic templates, а также возвращение лямбд из функций.
