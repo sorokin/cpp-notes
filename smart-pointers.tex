@@ -325,17 +325,13 @@ private:
     mutable linked_ptr* next; 
 };
 \end{minted}
-Члены prev и next помечены как mintinline{c++}{mutable}, потому что в случае если мы имеем константный \mintinline{c++}{const linked_ptr& p1}, который передается в функцию, и неконстантный \mintinline{c++}{linked_ptr& p2}, который является его соседом в двусвязном списке, то при изменении p1 придется поменять prev и next у p2.
+Члены prev и next помечены как \mintinline{c++}{mutable}, потому что в случае если мы имеем константный \mintinline{c++}{const linked_ptr& p1}, который передается в функцию, и неконстантный \mintinline{c++}{linked_ptr& p2}, который является его соседом в двусвязном списке, то при изменении p1 придется поменять prev и next у p2.
 
 Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object :
 
 \begin{minipage}[h]{0.49\linewidth}
 \centering
 \begin{asy}
-import unicode;
-settings.outformat = "pdf";
-texpreamble("\setmainlanguage{english}\setotherlanguage{urdu}\newfontfamily\urdufont{Times New Roman}");
-
 real arrow_len = 5;
 real box_h = arrow_len / 3.0;
 real box_w = box_h;
@@ -500,15 +496,11 @@ draw_last_arrows();
 \label{fig:prob1_6_2}
 \end{minipage}
 
-Копирование \mintinline{c++}{linked_ptr} - это вставка в нужное место двусвязного списка. После выполнения операции \mintinline{c++}{auto ptr4 = ptr2;} двусвязный список указателей будет выглядеть следующим образом:
+При копировании \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} новый ptr4 вставляется в тот же список, где был исходный ptr2. После выполнения этой операции двусвязный список указателей будет выглядеть следующим образом:
 
 \begin{minipage}[h]{0.49\linewidth}
 \centering
 \begin{asy}
-import unicode;
-settings.outformat = "pdf";
-texpreamble("\setmainlanguage{english}\setotherlanguage{urdu}\newfontfamily\urdufont{Times New Roman}");
-
 real arrow_len = 5;
 real box_h = arrow_len / 3.0;
 real box_w = box_h;
@@ -701,8 +693,10 @@ linked_ptr(linked_ptr const& other) noexcept
         this->next->prev = this;
 }
 \end{minted}
+% TODO: это не копирование
+% TODO: а что делать для нулевых укаателей?
 
-Аналогично, при удалении \mintinline{c++}{linked_ptr} просто перенаправляются ссылки соседей и при необходимости удаляется сам объект:
+При удалении \mintinline{c++}{linked_ptr} он удаляется из двусвязного списка. Если он был единственным элементом списка то он удаляет сам объект:
 \begin{minted}[
 linenos,
 frame=lines,
@@ -719,8 +713,6 @@ framesep=2mm]
 }
 
 \end{minted}
-
-Как видно, в \mintinline{c++}{linked_ptr} все элементы списка одновременно владеют ссылаемым объектом, но при этом имеют право удалять его только при удалении списка.
 
 Move-конструктор у \mintinline{c++}{linked_ptr} может выглядеть следующим образом:
 
@@ -744,7 +736,7 @@ linked_ptr(linked_ptr&& other) noexcept
 \end{minted}
 Заметим, что в отличае от конструктора копирования нужно занулять члены other, потому что на нем будет вызван деструктор.
 
-Остальной интерфейс \mintinline{c++}{linked_ptr} аналагичен таковому у \mintinline{c++}{shared_ptr}:
+\mintinline{c++}{linked_ptr} реализует операции \mintinline{c++}{get()}, \mintinline{c++}{operator*} и \mintinline{c++}{operator->}, как и другие умные указатели:
 
 \begin{minted}[
 linenos,
@@ -754,19 +746,23 @@ framesep=2mm]
 T* get() const noexcept { return ptr; } // разыменование указателя
 T* operator->() const noexcept { return ptr; } // вызов мембера объекта, на который указывает linked_ptr
 \end{minted}
+% TODO: стрелочка есть, а звездочка?
 
 \subsubsection{сравнение \mintinline{c++}{linked_ptr} и \mintinline{c++}{shared_ptr}}
 
 \begin{enumerate}
 \item \mintinline{c++}{std::shared_ptr} аллоцирует 1 вспомогательный объект на хипе, а \mintinline{c++}{linked_ptr} - ничего. 
-\item \mintinline{c++}{linked_ptr} не может быть размещен в константном пространстве памяти из-за mutable членов next и prev. Так, например, при передаче \mintinline{c++}{const linked_ptr&} в конструктор копирования на самом деле мы меняем эти 2 указателя на соседей, чтобы вставить в нужное место двусвязного списка.
+% TODO: не всегда, а что если используют make_shared
+\item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, по сравненею с двумя у \mintinline{c++}{shared_ptr}.
+% TODO: многопоточность
 \item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} должен только инкрементировать счетчик.
 \end{enumerate}
 
 \subsection{\mintinline{c++}{intrusive_ptr}}
 
-\mintinline{c++}{intrusive_ptr} - также умный указатель с разделяемым владением. В stl его нет, но он есть в boost. Его реализация разделяемого владения очень похожа на \mintinline{c++}{std::shared_ptr}, но в отличае от последнего в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается. Т.е. Реализовать его остается задачей пользователя.
-Для корректной работы \mintinline{c++}{intrusive_ptr} надо реализовать функции:
+\mintinline{c++}{intrusive_ptr} - также умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
+
+Для использования \mintinline{c++}{intrusive_ptr<T>} требуется реализовать функции:
 
 \begin{minted}[
 linenos,
@@ -777,7 +773,7 @@ int intrusive_ptr_add_ref(T* p);
 int intrusive_ptr_release(T* p);
 \end{minted}
 
-Пример использования :
+Пример использования:
 
 \begin{minted}[
 linenos,
@@ -805,22 +801,25 @@ int main() {
 }
 \end{minted}
 
-Замечание: \mintinline{c++}{intrusive_ptr} по понятным причинам эффективнее \mintinline{c++}{shared_ptr}, и если планируется использование разделяемого smart-pointer’а для класса, реализуемого самим пользователем, то лучше юзать \mintinline{c++}{intrusive_ptr}, а в случае если приходится иметь дело с библиотечным классом, то \mintinline{c++}{std::shared_ptr}.
+Замечание: \mintinline{c++}{intrusive_ptr} по понятным причинам
+% TODO: по каким? "... эффективнее shared_ptr поскольку ..."
+эффективнее \mintinline{c++}{shared_ptr}, и если планируется использование разделяемого smart-pointer’а для класса, реализуемого самим пользователем, то лучше юзать \mintinline{c++}{intrusive_ptr}, а в случае если приходится иметь дело с библиотечным классом, то \mintinline{c++}{std::shared_ptr}.
 
 \subsection{make\_shared / make\_unique}
 
-Как было сказано ранее, помимо стандартных конструкторов от указателя стандарт предлагает фабрики для создания объектов, определенные следующим образом (рассмотрим на примере \mintinline{c++}{std::shared_ptr}) : 
+Как было сказано ранее, помимо стандартных конструкторов от указателя стандарт предлагает фабрики для создания объектов, определенные следующим образом (рассмотрим на примере \mintinline{c++}{std::shared_ptr}): 
 
 \begin{minted}[
 linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-template<typename T, typename… Args>
-shared_ptr make_shared<T>(Args&&… args) {
-    return shared_ptr(new T(std::forward<Args>(args)...));
+template<typename T, typename... Args>
+shared_ptr<T> make_shared(Args&&... args) {
+    return shared_ptr<T>(new T(std::forward<Args>(args)...));
 }
 \end{minted}
+% TODO: зачем нужен такой make_shared? Зачем вообще нужен make_shared?
 
 Исторически введение данного метода должно было решить проблему с гарантиями безопасности. Представим следующую ситуацию :
 \begin{minted}[
@@ -849,6 +848,7 @@ f(std::make_shared<Class>(“class”), g());
 
 \begin{enumerate}
 \item Они экономят аллокации памяти (вместо двух аллокаций: \mintinline{c++}{new object()} и \mintinline{c++}{new counter}() происходит одна аллокация данных для пары <\mintinline{c++}{object}, \mintinline{c++}{counter}>
+% TODO: "экономят аллокации памяти " -- только для make_shared, а не для любого make_xxx!
 \item  Мы теперь не используем в коде не только \mintinline{c++}{delete}, но и голый \mintinline{c++}{new}. (no naked new)
 \end{enumerate}
 
@@ -952,8 +952,6 @@ derived_ptr = static_pointer_cast<Derived>(base_ptr);
 \begin{minipage}[h]{0.5\linewidth}
 \centering
 \begin{asy}
-settings.outformat = "pdf";
-
 real linked = 223;
 real shared = 557;
 real intrusive = 177;

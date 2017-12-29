@@ -26,6 +26,7 @@ ${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex ${MAIN_FILE_DEPS}
 	${TEX_CMD} --interaction=nonstopmode --halt-on-error --shell-escape ${MAIN_FILE_BASE}.tex
 	find -name '${MAIN_FILE_BASE}-*.asy' -print0 | xargs -0 asy
 	${TEX_CMD} --interaction=nonstopmode --halt-on-error --shell-escape ${MAIN_FILE_BASE}.tex
+	${TEX_CMD} --interaction=nonstopmode --halt-on-error --shell-escape ${MAIN_FILE_BASE}.tex
 
 ${HOW_TO_BASE}.pdf: ${HOW_TO_BASE}.tex
 	$(call clean_how_to_file)
