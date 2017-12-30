@@ -110,7 +110,6 @@ int arr[value];         // error: value is not a constant expression
 	\item Она является интегральным типом или перечислением. (см. таблицу \ref{tab:types} категорий типов)
 	\item Выражение, которым инициализируется начальное значение - \textit{constant expression}.
 \end{enumerate}
-
 Результат вызова функции в C++03 никогда не является constant expression'ом:
 \begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 int arr[max(3, 4)];         // error: max(3, 4) is not a constant expression
@@ -124,14 +123,14 @@ int arr[max(3, 4)];         // error: max(3, 4) is not a constant expression
 % TODO: вопросы: как constexpr переменные участвуют в линковке? что произойдет если взять их адрес?
 % TODO: если адрес брать можно, то значит они работают как inline переменные?
 % TODO: можно ли им написать дефинишн? constexpr int a = 5; constexpr int mytype::a;
-По стандарту \textbf{constexpr} переменные и \textbf{constexpr} функции неявно являются \texttt{inline}.
+По стандарту \textbf{constexpr} переменные и \textbf{constexpr} функции неявно являются \texttt{inline}. Не могут иметь внешнюю линковку.
 \subsubsection{Constexpr переменные}
 Переменные, объявленные как \textbf{constexpr}, должны удовлетворять следующим требованиям:
 \begin{enumerate}
 \item Должны быть проинициализированы сразу при объявлении.
 \item Выражение в инициализации должно быть \textit{constant expression}.
 \end{enumerate}
-Использование \textbf{Constexpr} переменной является constant expression'ом. \textbf{Constexpr} переменные неявно являются \textbf{const} переменными.
+Использование \textbf{constexpr} переменной является \textit{constant expression}'ом. \textbf{Constexpr} переменные неявно являются \textbf{const} переменными.
 \subsubsection{Constexpr функции}
 %TODO: уточнить формулировку
 Объявление функции как \textbf{constexpr} означает, что если все её аргмуенты являются \textit{constant expression}'ами, то возвращаемое значение может быть посчитано на этапе компиляции. Если значение хотя бы одного аргумента, переданного функции, не известно на момент компиляции, то возвращаемое значение функции вычисляется в run-time, ошибки компиляции не происходит.\\\\
