@@ -755,25 +755,25 @@ T& operator*() const { return *ptr; }
 \subsubsection{сравнение \mintinline{c++}{linked_ptr} и \mintinline{c++}{shared_ptr}}
 
 \begin{enumerate}
-\item \mintinline{c++}{std::shared_ptr} при передаче в конструктор указателя на объект аллоцирует еще 1 вспомогательный объект на хипе, а \mintinline{c++}{linked_ptr} - ничего. 
-\item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, по сравненею с двумя у \mintinline{c++}{shared_ptr}.
-\item \mintinline{c++}{std::shared_ptr} в стандартной библиотеке является thread-safe. Он использует атомарные операции инкремента и декремента для счетчика ссылок. Thread-safe \mintinline{c++}{linked_ptr} не может быть так просто реализован и требует использования уже thread-safe структур данных.
-\item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} должен только инкрементировать счетчик.
+\item При инициализации \mintinline{c++}{std::shared_ptr} сырым указателем, \mintinline{c++}{std::shared_ptr} аллоцирует дополнительный объект в куче для счетчика ссылок. \mintinline{c++}{linked_ptr} не аллоцирует дополнительной памяти.
+\item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, вместо двух у \mintinline{c++}{shared_ptr}.
+\item \mintinline{c++}{std::shared_ptr} в стандартной библиотеке является thread-safe. Он использует атомарные операции инкремента и декремента для счетчика ссылок. Thread-safe \mintinline{c++}{linked_ptr} не может быть так просто реализован.
+\item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} лишь инкрементирует счетчик.
 \end{enumerate}
 
 \subsection{\mintinline{c++}{intrusive_ptr}}
 
-\mintinline{c++}{intrusive_ptr} - также умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
+\mintinline{c++}{intrusive_ptr} --- умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
 
-Для использования \mintinline{c++}{intrusive_ptr<T>} требуется реализовать функции:
+Для использования \mintinline{c++}{intrusive_ptr} с пользовательским типом \mintinline{c++}{mytype} требуется реализовать функции:
 
 \begin{minted}[
 linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-int intrusive_ptr_add_ref(T* p);
-int intrusive_ptr_release(T* p);
+int intrusive_ptr_add_ref(mytype* p);
+int intrusive_ptr_release(mytype* p);
 \end{minted}
 
 Пример использования:
@@ -826,7 +826,7 @@ linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-f(std::shared_ptr<Class>(new Class(“class”)), g());
+f(std::shared_ptr<Class>(new Class("class")), g());
 \end{minted}
 
 При этом \mintinline{c++}{g()} бросает исключение. Т.к. по стандарту нет гарантии порядка вычисления аргументов \mintinline{c++}{f}, то может произойти следующее : сначала создадим \mintinline{c++}{new Class()}, выделим память, потом - вызовем \mintinline{c++}{g()}, которое бросит исключение, после чего конструктор \mintinline{c++}{shared_ptr} уже не вызовется, т.к. бросился exception. А т.к. мы нигде не пишем слово \mintinline{c++}{delete}, то произойдет memory leak.
@@ -838,7 +838,7 @@ linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-f(std::make_shared<Class>(“class”), g());
+f(std::make_shared<Class>("class"), g());
 \end{minted}
 
 Если сначала вызовется \mintinline{c++}{g()}, то до конструктора \mintinline{c++}{Class} дело вообще не дойдет и упомянутой проблемы не возникнет. С другой стороны, если сначала вызовется \mintinline{c++}{make_shared}, то объект будет уже обернут в smart pointer и после исключения в \mintinline{c++}{g()} он будет автоматически удален!!!
