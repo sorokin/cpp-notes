@@ -1,0 +1,422 @@
+	\section{Вывод типов}
+	До \textit{С++11} был один набор правил вывода типов --- для шаблонов функций. В \textit{С++11} появились два новых языковых механизма \mintinline{c++}{auto} и \mintinline{c++}{decltype} и вывод типов используемый для шаблонов функций был адаптирован для них.
+	Применение вывода типов избавляет от необходимости писать типы в тех местах, где они могут быть определены из контекста.
+	
+	\subsection{Вывод типов шаблона}
+		Рассмотрим следующий фрагмент кода.
+		
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<typename T>
+void f(ParamType param);
+
+f(expr);
+\end{minted}
+        В нём объявлена шаблонная функция f, и одна вызывается от выражения expr. В месте вызова тип параметра ParamType выводится на основе типа выражения expr. Рассмотрим как разные виды ParamType влияют на вывод типа T.
+
+		\subsubsection{Общий вид вывода}
+		Начнем с того, как это выглядит в общем случае:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename U>
+void f(map<T, U*> *m);
+
+map<int, const float*>* x;
+map<vector<int>, char*>* y;
+map<int, int> z;
+
+f(x) // T - int,         U - const float, ParamType - map<int, const float*>*
+f(y) // T - vector<int>, U - char,  ParamType -  map<vector<int>, char*>*
+f(z) // ошибка
+\end{minted}
+		Рассмотрим \mintinline{c++}{f(x)}:
+		\begin {center}
+		\begin {tabular} { |c|c|c|c| }
+		\hline
+			Замечание & Действие & Исходный тип & ParamType \\
+		\hline
+			& & \mintinline{c++}{map<int, const float*> *} & \mintinline{c++}{map<T, U*> *} \\
+		\hline
+			Снаружи у обоих типов указатель & сняли указатель & \mintinline{c++}{map<int, const float*>} & \mintinline{c++}{map<T, U*>} \\
+		\hline
+			Снаружи у обоих типов map & убрали map & \mintinline{c++}{int, const float *} & \mintinline{c++}{T, U*} \\
+		\hline	
+			Видно, что T это \mintinline{c++}{int} & \mintinline{c++}{T = int} & \mintinline{c++}{const float *} & \mintinline{c++}{U*} \\
+		\hline
+			Снаружи у обоих типов указатель & сняли указатель & \mintinline{c++}{const float} & \mintinline{c++}{U} \\
+		\hline
+			Видно, что U это \mintinline{c++}{const float} & \mintinline{c++}{U = const float} & & \\
+		\hline	
+		\end {tabular}
+		\end {center}
+		Таким образом у нас \mintinline{c++}{T = int}, а \mintinline{c++}{U = const float}, то есть общий алгоритм такой:
+		\begin {itemize}
+			\item Если мы дошли до \mintinline{c++}{T}, или \mintinline{c++}{T&}, то подставить тип по специальным правилам, которые будут в следующем пункте.
+			\item Если оба типа --- указатели, снять указатели и продолжаем дальше.
+			\item Если оба типа --- одинаковые \mintinline{c++}{temlate}-типы, то снимаем внешний тип и продолжаем дальше.
+			\item Если у нас несостыковка(например в f(z) второй тип у map \mintinline{c++}{int}, а мы хотим \mintinline{c++}{U*}), то ошибка вывода
+		\end {itemize}
+		\subsubsection{Ссылки и значения}
+			Теперь поговорим про передачу по ссылке и значению. То есть такие примеры
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T a);
+
+template <typename T>
+void g(T &a);
+\end{minted}
+			
+			Здесь используются такие правила
+			\begin{enumerate}
+				\item Убрать ссылочную часть исходного типа
+				\item Выполняется сопоставление исходного типа с типом аргумента для определения T. (при выводе игнорируются \mintinline{c++}{const} и \mintinline{c++}{volatile})
+			\end{enumerate}
+			Показательным примером будет такой код
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T x) {
+	x = 10;
+}
+
+template <typename T>
+void g(T &x) {
+	x = 10;
+}
+
+void main() {
+	int a = 5;
+	int &ra = a;
+	f(ra); // T - int(убирается ссылка), следовательно после f(ra) a = 5
+	g(ra); // T - int, но уже у типа аргумента есть &, следовательно тип аргумента - int& и после g(ra) a = 10
+}
+\end{minted}
+		
+		\subsubsection{Универсальная ссылка}
+			Сразу возникает вопрос что такое универсальная ссылка. Универсальная ссылка - ссылка, которая обьявляется как \textit{rvalue} ссылка, но ведет себя иначе при передаче аргументов, являющихся \textit{lvalue}.
+			Для темплейтов это пишется так:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T&& param)
+\end{minted}
+			
+			Для их вывода применяются такие правила:
+			\begin{enumerate}
+				\item На место \textit{T} подставляется или \textit{lvalue} или \textit{rvalue} ссылка в зависимости от того какой обьект мы передали(\textit{lvalue} или \textit{rvalue})
+				
+				\item Происходит \textit{сжатие ссылок}
+				\begin{itemize}
+					\item Если T является \textit{lvalue}, то на выходе будет \textit{lvalue}. 
+					\item Если T является \textit{rvalue}, то на выходе будет \textit{rvalue}. 
+				\end{itemize}
+				
+			\end{enumerate}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int x;
+const int cx;
+const int &rx;
+
+// Здесь x, cx, rx являются lvalue
+f(x)  // T - int& -> void f(int& &&param) -> void f(int &param)
+f(cx) // T - const int& -> void f(const int& &&param) -> void f(const int &param)
+f(rx) // T - const int& -> void f(const int& &&param) -> void f(const int &param)
+
+// 27 - rvalue
+f(27) // T - int&& -> void f(int&& &&param) -> void f(int &&param)
+\end{minted}	
+			Но не надо забывать, что тип может быть \textit{rvalue-ссылкой}, но само значение все равно будет \textit{lvalue}, потому что оно имеет имя. Именно из-за этого возникает проблема прямой передачи значений(perfect forwarding), о которой будет речь далее.
+			
+		\subsubsection{Особенности вывода типов для шаблонов}
+			\begin{enumerate}
+				\item \textbf{Deduction может фэйлиться}.
+				
+				Давайте рассмотрим такой пример
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T, T*);
+
+int main()
+{
+	f(0, NULL);
+}
+				\end{minted}
+				С одной стороны можно подумать что 0 - int, а NULL - нулевой указатель. Но NULL - 0, то есть int, поэтому этот код не скомпилируется с ошибкой "void f(T,T *): не удалось вывести аргумент шаблон для "T *" из "int""
+				
+				\item \textbf{Non-deduced context}
+				
+				Что такое non-deduced context? Это тот тип, сквозь который невозможно выводить тип. Почему может не выводиться тип? Легче рассмотреть это на примере:
+				
+				Пусть у нас есть такая структура:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<typename T>
+struct not_deduced { typedef T type; };
+\end{minted}
+				А теперь сделаем такие перегрузки.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<>
+struct not_deduced<char> { typedef T double; };
+template<>
+struct not_deduced<double> {typedef T double; };
+\end{minted}
+				Получается, что для \mintinline{c++}{double} есть два варианта \mintinline{c++}{non_deduced} и из-за этого неоднозначно выводится тип для \mintinline{c++}{double}. 
+				
+				Одно из применений \textit{Non-deduced context} - вывести специальный тип для данного контекста.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+/* Например мы хотим реализовать С-style добавление в вектор */
+template<typename T>
+void bad(std::vector<T> x, T value = 1);
+template<typename T>
+void good(std::vector<T> x, typename not_deduced<T>::type value = 1);
+
+std::vector<std::complex<double>> x;
+bad(x, 1.2);  // рассмотрим первый аргумент -
+			  // входной тип std::vector<std::complex<double>>
+			  // тип аргумента - std::vector<T>, следовательно T = std::complex<double>
+
+			  // для второго входной - double, тип аргумента T, следовательно T = double
+			  // мы зафэйлились :(
+
+good(x, 1.2); // для первого тоже самое
+			  // у второго есть зависимое поле следовательно он ничего не выводит.
+			  // поэтому T = std::complex<double> из первого вывода
+\end{minted}
+				
+				В данном примере мы хотели, чтобы передаваемый элемент был того же типа, что и контейнер. И non-deduced контекст помог нам в этом.
+				
+				\item \textbf{Аргументы-массивы}
+				
+				Часто люди думают, что массив и указатель на начало это синонимы. Это правда во множестве случаев, так как массив преобразуется в указатель на его первый элемент. Это преобразование позволяет компилироваться такому коду:
+				
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+const char name[] = "Briggs"
+const char *ptr_to_name = name;
+\end{minted}
+				
+				Но что будет, если передать массив шаблону, принимающему параметр по значению?
+				Пусть мы передали \mintinline{c++}{f(name)}
+				
+				Какие варианты выводов могут быть для этого?
+				
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void f(const char param[]); // это корректно
+void f(const char *param);
+\end{minted}
+				
+				Но так как массив рассматривается как указатель, для f(name) T будет \mintinline{c++}{const char *}.
+				Но давайте рассмотрим ParamType - \mintinline{c++}{T&}. И в таком случае T будет \mintinline{c++}{const char[]} и ParamType -  \mintinline{c++}{const char (&)[]}
+				
+				Одним из забавных применений данной техники является вывод количества элементов, содержащихся в массиве:
+				
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, std::size_t N>
+constexpr std::size_t arraySize(T (&)[N]) noexcept {
+	return N;
+}
+\end{minted}
+				Модификатор constexpr делает результат функции доступным во время компиляции и можно сделать например массивы для каждого ключа свое значение.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int keyVals[] = {1, 2, 3, 4, 5, 6, 7};
+std::array<int, arraySize(keyVals)> mappedVals;
+\end{minted}
+				
+				\item \textbf{Аргументы-функции}
+				
+				Вместо кучи слов легче написать пример:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void someFunc(int);
+
+template<typename T>
+void f1(T param);
+
+template<typename T>
+void f2(T& param);
+
+f1(someFunc) // тип - void(*)(int)
+f2(someFunc) // тип - void(&)(int)
+\end{minted}
+\end{enumerate}
+	
+	\subsection{Вывод типов для auto}
+	Если вы прочли вывод типов для шаблонов, вы знаете почти все, что следует знать о выводе типа auto, поскольку за одним любопытным исключеним типа auto представляется собой вывод типа шаблона. Как так? Существует прямая взаимосвязь между выводом типа щаблона и выводом типа auto.
+	
+	В шаблонах при вызове f компиляторы ипользуют expr для вывода типов T и ParamType. Когда переменная обьявлена с использованием ключевого слова auto, она играет роль T в шаблоне, а спецификатор типа переменной действует как ParamType.
+	Давайте рассмотрим примеры:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+auto x = 27;
+const auto cx = x;
+const auto& rx = x;
+\end{minted}
+
+	Для вывода типов данных штук компилятор действует так, как это бы были данные темплейты:
+	
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void func_for_x(T param);
+func_for_x(27);
+
+template <typename T>
+void func_for_cx(const T param);
+func_for_cx(x);
+
+template <typename T>
+void func_for_rx(const T& param);
+func_for_cx(x);
+\end{minted}
+
+	Собственно для всего того, что обьявлено выше для templates все работает также для auto.
+	
+	Но чем же они отличаются? До C++11 для инициализации обьектов было всего 2 возможности:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int x = 27;
+int x(27);
+\end{minted}
+	В С++11 кроме старых вариантов появились новые варианты.
+	
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int x3 = {27};
+int x4{27};
+\end{minted}
+	
+	Заменив слово int на auto первые две конструкции будут вести себя также, но вторые две будут вести себя иначе. Их типом будет \mintinline{c++}{std::initializer_list<int>}. Поэтому такой код \mintinline{c++}{auto x5 = {1, 2, 3.0}} не будет компилироваться, так как не удается вывести тип T для \mintinline{c++}{std::initializer_list<T>}. Так к чему же все это? Рассмотрим такой код:
+	
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+auto x = {1, 2, 3}; // тут все норм. Тип - std::initializer_list<int>
+
+template <typename T>
+void f(T param);
+
+f({1, 2, 3}); // ошибка вывода типа для T
+\end{minted}
+	
+	Однако если сделать ParamType - \mintinline{c++}{std::initializer_list<T>}, то все будет работать.
+	
+	Таким образом, единственное реальное различие между выводом типа для \mintinline{c++}{auto} и выводом типа шаблона заключается в том, что \mintinline{c++}{auto} предполагает, что инициализатор в фигурных скобках представляет собой \mintinline{c++}{std::initializer_list}, в то врем я как вывод типа шаблона этого не делает.
+	
+	Для \textit{С++11} это все, но в \textit{С++14} auto немного распростронили.\textit{ С++14 }допускает применение \mintinline{c++}{auto} для указания того, что возвращаемый тип функции должен быть выведен, а кроме того, лямбда-выражения \textit{С++14} могут использовать \mintinline{c++}{auto} в обьявлениях параметров. Однако такие штуки используют вывод типа для шаблонов. То есть такой код работать не будет:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+auto createInitList() {
+return {1, 2, 3}
+}
+\end{minted}
+	
+	\subsection{Использование auto}
+	Часто люди думают, что использование auto - избегание неинициализированных переменных, длинных обьявлений переменных, но этим auto не ограничивается.
+	\begin{enumerate}
+		\item \textbf{Часто лучше определять auto, чем явно обьявлять тип.}
+	
+		Давайте рассмотрим такую ситуацию:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+std::vector<int> v;
+...
+unsigned sz = v.size();
+\end{minted}
+		Но \mintinline{c++}{v.size()} возвращает не \mintinline{c++}{unsigned}, а \mintinline{c++}{std::vector<int>::size_type}. В 32-битной системе это 32битный тип, а в 64-битной - 64. Но \mintinline{c++}{unsigned} - всегда 32.
+		Отлично, это еще только начало
+		
+		Давайте рассмотрим следующий код:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+std::unordored_map<std::string, int> m;
+...
+for (const std::pair<std::string, int>& p : m) {
+...
+}
+\end{minted}
+		Выглядит нормально, но на самом деле тут происходит копирование: в мапе тип хранения \mintinline{c++}{std::pair<const std::string, int>}, поэтому он ищет преобразование \mintinline{c++}{std::pair<const std::string, int>} в \mintinline{c++}{std::pair<std::string, int>} и создается временный обьект.
+		
+	    \item \textbf{Не надо использовать auto всегда}
+	    
+		Сделаем такой код. Пусть у нас есть функция, которая возвращает \mintinline{c++}{std::vector<bool>} и нас интересует 5 бит, который мы передадим дальше
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+bool res = f()[4];
+g(res);
+\end{minted}
+		Тут все нормально. А теперь давайте поменяем \mintinline{c++}{bool} на \mintinline{c++}{auto}, и теперь у нас все не будет работать:)
+		
+		\mintinline{c++}{operator[]} у \mintinline{c++}{vector<bool>} возвращает не \mintinline{c++}{bool&} а специальную штуку \mintinline{c++}{std::vector<bool>::reference}, которая указывает на конкретный бит. Она хранит по факут указатель и смещение. Но у нас \mintinline{c++}{vector} оказывается временным и при вызове g он будет уничтожен, собственно res будет висячим:)
+		
+		\item \textbf{Использовать \mintinline{c++}{for (auto &&e : v)}}
+		
+		Контейнеры в \textit{С++} могут возвращать три типа данных: const lvalue, lvalue, rvalue. И чтобы обеспечить работу всех трех случаев не достаточно написать \mintinline{c++}{for(const auto &e : v)}, как делают многие. Если еще \textit{const lvalue} и \textit{rvalue} сработает, то если мы захотим изменять элементы контейнера, мы не сможем этого делать. 
+		
+		Если сделать \mintinline{c++}{for (auto &e : v)}, то мы не сможем работать с \textit{const lvalue} обьектами. Поэтому лучше писать \mintinline{c++}{for (auto &&e : v)}. Для него будет работать \textit{сжатие ссылок}, которое обеспечивает корректную работу во всех случаях.
+		
+	\end{enumerate}
+
+	\subsection {Decltype}
+		Что такое \mintinline{c++}{decltype}? Это конструкция, которая для данного имени или выражения сообщает тип этого имени или выражения
+		
+		Начнем с типичных случаев, в которых нет никаких подводных камней. В отличие от \mintinline{c++}{auto} и \mintinline{c++}{template} - \mintinline{c++}{decltype} возвращает точный тип имени или выражения, которое вы передаете ему:
+		
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+const int i;             // decltype(i)    = const int
+bool f(const Widget& w); // decltype(f)    = bool(const Widget&)
+vector<int> v;           // decltype(v)    = vector<int>
+if (v[0] == 0) ...       // decltype(v[0]) = int&
+\end{minted}
+		
+		Основное применение \mintinline{c++}{decltype} в \textit{С++11} - обьявление шаблонов функций, в которых возвращаемый тип функции зависит от типов ее параметров.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}		
+template<typename... As>
+ReturnType f(As&& ... a) {
+	return g(forward<As>(a)...);
+}
+\end{minted}
+		То есть нам надо вернуть такой тип, который возвращает функция \textbf{g}. Логично бы было написать \mintinline{c++}{decltype(g(forward<As>(a)...))}, но такой код не является корректным, потому что когда компилятор считывает \mintinline{c++}{decltype} он еще ничего не знает об \textbf{а}.
+		
+		Поэтому в \textit{С++11} был придуман новый синтаксис - завершающий возвращаемый тип. Он уже позволяет указывать в спецификации возвращаемого типа параметры функции a. Вместо того, что было написано наверху можно написать так.
+		
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<typename... As>
+auto f(As&& ... a) -> decltype(g(forward<As>(a)...)) {
+	return g(forward<As>(a)...);
+}
+\end{minted}
+		
+		Многие могли подумать, что вместe c \mintinline{c++}{auto} тут подразумевается вывод типов, но в \textit{С++11} это не так. Оно просто означает, что возвращаемый тип будет написан после аргументов. В C++14 мы можем опустить заверщающий возвращаемый тип, оставляя только одно ведущее ключевое слово \mintinline{c++}{auto}. При таком обьявлении \mintinline{c++}{auto} означает, что имеет место \textit{вывод типа}, а точнее \textit{вывод типа шаблона}
+		
+		Это может сыграть плохую шутку в том случае, когда например возвращаемый тип представляет собой ссылку.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<typename Container, typename index>
+auto authAndAccess(Container& c, Index i) {
+	authenticateUser();
+	return c[i];
+}
+\end{minted}
+		Получается, что он проигнорирует ссылку и такой код:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+std::deque<int> d;
+...
+authAndAccess(d, 5) = 10;
+\end{minted}
+		Не будет компилироваться.
+		
+		Чтобы заставить \mintinline{c++}{authAndAccess} работать так, как мы хотим(чтобы можно было писать код сверху), нам надо использовать для ее возвращаемого типа выдов типа \mintinline{c++}{decltype}, т.е. указать, что \mintinline{c++}{authAndAccess} должна возвращать в точности тот же тип, что и выражение \mintinline{c++}{c[i]}. Добрые люди, предвидя необходимость использования в некоторых случаях правила вывода типа decltype, сделали это возможным в \textit{С++14} с помощью спецификатора \mintinline{c++}{decltype(auto)}.
+		
+		В этом есть смысл: \mintinline{c++}{auto} указывает, что тип должен быть выведен, а \mintinline{c++}{decltype} говорит о том, что в процессе вывода следует использовать правила \mintinline{c++}{decltype}. \\\\
+		Использование \mintinline{c++}{decltype(auto)} не ограничивается возвращаемым типом функции. Он может быть удобен для обьявления переменны, когда хотим применять правила вывода типа decltype к инициализирующему выражению:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+Widget w;
+const Widget& cw = w;
+auto myWidget1 = cw;           // Widget
+decltype(auto) myWidget2 = cw; // const Widget&
+\end{minted}
+		Теперь давайте перейдем к подводным камням \mintinline{c++}{delctype}. В начале параграфа говорилось, что \mintinline{c++}{decltype} для данного имени или выражения сообщает тип этого \textbf{имени или выражения}. То есть есть разница между a и (a):
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+int a;
+decltype(a)   // int
+decltype((a)) // int&
+\end{minted}
+		Во втором случае у нас получается не имя, а выражение за счет скобочек, а так как внутри скобочек находится \textit{lvalue}, поэтому тип возращаемый будет \textit{lvalue}.
+		
+		И это может чувствоваться на таком примере.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+		decltype(auto) f1() {
+			int x = 0;
+			...
+			return x;
+		}
+		
+		decltype(auto) f2() {
+			int x = 0;
+			...
+			return (x);
+		}
+\end{minted}
+		Вроде бы разница между функциями небольшая, но f2 является бомбой замедленного действия, поведение которого нельзя предсказать. Поэтому с \mintinline{c++}{decltype} надо быть предельно внимательным, потому что малейшая неточность может привести к плохим последствиям.

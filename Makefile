@@ -1,5 +1,5 @@
 MAIN_FILE_BASE := main
-MAIN_FILE_DEPS := compilation.tex preprocessor.tex nullptr.tex rvalue-references.tex smart-pointers.tex
+MAIN_FILE_DEPS := compilation.tex preprocessor.tex nullptr.tex rvalue-references.tex smart-pointers.tex type-deduction.tex
 HOW_TO_BASE := how-to-contribute
 TEX_CMD ?= pdflatex
 
