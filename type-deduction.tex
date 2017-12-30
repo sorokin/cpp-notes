@@ -13,36 +13,47 @@ f(expr);
 \end{minted}
         В нём объявлена шаблонная функция f, и одна вызывается от выражения expr. В месте вызова тип параметра ParamType выводится на основе типа выражения expr. Рассмотрим как разные виды ParamType влияют на вывод типа T.
 
-		\subsubsection{Указатели}
-		
-% TODO: может быть сделать этот раздел как вывод в общем случае
-% обходим ParamType и decltype(expr) и спускаемся по типам?
-			Начнем с указателей. Пусть есть такая функция:
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-template <typename T>
-void f(T *a);
-\end{minted}
-			
-			Вывод типов работает следующим образом. Он берет тип expr, если тип expr не является указателем --- вывод завершается с ошибкой. Иначе T выводится как то, на что ссылается этот указатель. В данном примере показаны простые случаи:
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-int x;
-const int *px;
-
-f(&x) // T - int,       ParamType - int *
-f(px) // T - const int, ParamType - const int *
-\end{minted}
-			
-			Теперь давайте рассмотрим более общий случай с указателями.
+		\subsubsection{Общий вид вывода}
+		Начнем с того, как это выглядит в общем случае:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 template <typename T, typename U>
 void f(map<T, U*> *m);
 
-map<int, float*>* x;
+map<int, const float*>* x;
 map<vector<int>, char*>* y;
+map<int, int> z;
 
-f(x) // T - int,         U - float, ParamType - map<int, float*>*
+f(x) // T - int,         U - const float, ParamType - map<int, const float*>*
 f(y) // T - vector<int>, U - char,  ParamType -  map<vector<int>, char*>*
+f(z) // ошибка
 \end{minted}
+		Рассмотрим \mintinline{c++}{f(x)}:
+		\begin {center}
+		\begin {tabular} { |c|c|c|c| }
+		\hline
+			Замечание & Действие & Исходный тип & ParamType \\
+		\hline
+			& & \mintinline{c++}{map<int, const float*> *} & \mintinline{c++}{map<T, U*> *} \\
+		\hline
+			Снаружи у обоих типов указатель & сняли указатель & \mintinline{c++}{map<int, const float*>} & \mintinline{c++}{map<T, U*>} \\
+		\hline
+			Снаружи у обоих типов map & убрали map & \mintinline{c++}{int, const float *} & \mintinline{c++}{T, U*} \\
+		\hline	
+			Видно, что T это \mintinline{c++}{int} & \mintinline{c++}{T = int} & \mintinline{c++}{const float *} & \mintinline{c++}{U*} \\
+		\hline
+			Снаружи у обоих типов указатель & сняли указатель & \mintinline{c++}{const float} & \mintinline{c++}{U} \\
+		\hline
+			Видно, что U это \mintinline{c++}{const float} & \mintinline{c++}{U = const float} & & \\
+		\hline	
+		\end {tabular}
+		\end {center}
+		Таким образом у нас \mintinline{c++}{T = int}, а \mintinline{c++}{U = const float}, то есть общий алгоритм такой:
+		\begin {itemize}
+			\item Если мы дошли до \mintinline{c++}{T}, или \mintinline{c++}{T&}, то подставить тип по специальным правилам, которые будут в следующем пункте.
+			\item Если оба типа --- указатели, снять указатели и продолжаем дальше.
+			\item Если оба типа --- одинаковые \mintinline{c++}{temlate}-типы, то снимаем внешний тип и продолжаем дальше.
+			\item Если у нас несостыковка(например в f(z) второй тип у map \mintinline{c++}{int}, а мы хотим \mintinline{c++}{U*}), то ошибка вывода
+		\end {itemize}
 		\subsubsection{Ссылки и значения}
 			Теперь поговорим про передачу по ссылке и значению. То есть такие примеры
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
@@ -77,8 +88,6 @@ void main() {
 	g(ra); // T - int, но уже у типа аргумента есть &, следовательно тип аргумента - int& и после g(ra) a = 10
 }
 \end{minted}
-		
-		\subsubsection{Function type normalizing} что это?
 		
 		\subsubsection{Универсальная ссылка}
 			Сразу возникает вопрос что такое универсальная ссылка. Универсальная ссылка - ссылка, которая обьявляется как \textit{rvalue} ссылка, но ведет себя иначе при передаче аргументов, являющихся \textit{lvalue}.
@@ -132,15 +141,25 @@ int main()
 				С одной стороны можно подумать что 0 - int, а NULL - нулевой указатель. Но NULL - 0, то есть int, поэтому этот код не скомпилируется с ошибкой "void f(T,T *): не удалось вывести аргумент шаблон для "T *" из "int""
 				
 				\item \textbf{Non-deduced context}
-				% TODO: написать, что сквозь него выводить невозможно
-				% TODO: дальше его можно абузить
-				Non-deduced context рассматривается в коде ниже и обычно нужен для того, чтобы вывести специальный тип.
+				
+				Что такое non-deduced context? Это тот тип, сквозь который невозможно выводить тип. Почему может не выводиться тип? Легче рассмотреть это на примере:
+				
+				Пусть у нас есть такая структура:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 template<typename T>
-struct not_deduced {
-	typedef T type;
-};
-
+struct not_deduced { typedef T type; };
+\end{minted}
+				А теперь сделаем такие перегрузки.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<>
+struct not_deduced<char> { typedef T double; };
+template<>
+struct not_deduced<double> {typedef T double; };
+\end{minted}
+				Получается, что для \mintinline{c++}{double} есть два варианта \mintinline{c++}{non_deduced} и из-за этого неоднозначно выводится тип для double. 
+				
+				Одно из применений \textit{Non-deduced context} - вывести специальный тип для данного контекста.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 /* Например мы хотим реализовать С-style добавление в вектор */
 template<typename T>
 void bad(std::vector<T> x, T value = 1);
@@ -312,7 +331,13 @@ g(res);
 		Тут все нормально. А теперь давайте поменяем \mintinline{c++}{bool} на \mintinline{c++}{auto}, и теперь у нас все не будет работать:)
 		
 		\mintinline{c++}{operator[]} у \mintinline{c++}{vector<bool>} возвращает не \mintinline{c++}{bool&} а специальную штуку \mintinline{c++}{std::vector<bool>::reference}, которая указывает на конкретный бит. Она хранит по факут указатель и смещение. Но у нас \mintinline{c++}{vector} оказывается временным и при вызове g он будет уничтожен, собственно res будет висячим:)
-		\item Использовать \mintinline{c++}{for (auto &&e : v)} - зачем это нужно?
+		
+		\item \textbf{Использовать \mintinline{c++}{for (auto &&e : v)}}
+		
+		Бывают такие контейнеры, которые возвращают \textit{rvalue}-обьекты(например контейнер, который генерирует последовательность целых чисел, которые не хранятся в памяти). И если написать \mintinline{c++}{for(const auto &e : v)}, то можно придумать пример в котором он не будет работать. А при универсальной реализации будет работать \textit{reference collapsing rule} и все будет разделяться на \textit{rvalue} и \textit{lvalue}.
+		
+		Стоит отметить, когда в e - \textit{rvalue}, то e продлевает жизнь возвращенному значению из контейнера.
+		
 	\end{enumerate}
 
 	\subsection {Decltype}
