@@ -493,7 +493,7 @@ for (int i = 1; i <= box_count; ++i) {
 }
 draw_last_arrows();
 \end{asy}
-\label{fig:prob1_6_2}
+% \label{fig:prob1_6_2}
 \end{minipage}
 
 При копировании \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} новый ptr4 вставляется в тот же список, где был исходный ptr2. После выполнения этой операции двусвязный список указателей будет выглядеть следующим образом:
@@ -677,7 +677,7 @@ draw_curved_arrow((x2_1, arrow_right_y), (x4_0, y4_0 + arrow_right_offset), "pre
 
 //draw_curved_arrow((x4_1, y4_0 + arrow_left_offset), (x3_0, arrow_left_y), "next", false);
 //draw_curved_arrow((x4_1, y4_0 + arrow_right_offset), (x3_0, arrow_right_y), "prev", true);
-\label{fig:prob1_6_2}
+% \label{fig:prob1_6_3}
 \end{asy}
 \end{minipage}
 
@@ -1340,7 +1340,6 @@ label("std::shared\underline{\hspace{0.3cm}}ptr", (shared_offset - label_offset,
 label("boost::intruisive\underline{\hspace{0.3cm}}ptr", (intrusive_offset - label_offset, intrusive + label_delta), black);
 label("std::unique\underline{\hspace{0.3cm}}ptr", (unique_offset - label_offset, unique + label_delta), black);
 label("std::move benchmark : ", (bench_width * 2.0, max_height * 1.1));
-
 \end{asy}
 \end{minipage}
 
