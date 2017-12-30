@@ -11,6 +11,39 @@ void vector<T>::operator=(vector<T> const& other) {
 }
 \end{minted}
 
+TODO: пример
+string& operator=(string const& rhs)
+{
+    size_ = rhs.size_;
+    delete[] data_;
+    data_ = new char[rhs.size_ + 1];
+    memcpy(data_, rhs.data_, rhs.size_ + 1);
+
+    return *this;
+}
+
+string& operator=(string const& rhs)
+{
+    size_ = rhs.size_;
+    char* tmp = new char[rhs.size_ + 1];
+    delete[] data_;
+    data_ = tmp;
+    memcpy(data_, rhs.data_, rhs.size_ + 1);
+
+    return *this;
+}
+
+string& operator=(string const& rhs)
+{
+    char* tmp = new char[rhs.size_ + 1];
+    delete[] data_;
+    data_ = tmp;
+    memcpy(data_, rhs.data_, rhs.size_ + 1);
+    size_ = rhs.size_;
+
+    return *this;
+}
+
 На первый взгляд это довольно безобидный код. Но он совершено не учитывает возможность возникновения исключения в одном из вызовов конструктора \mintinline{c++}{T()}. Что произойдет в этом случаи?
 
 Исключение пролетит дальше. Предположим, что его кто-то поймал. Но тогда он обнаружит наш вектор в сломанном состоянии. И не сможет ничего с ним сделать. Любой вызов public-метода вызывает undefined behavior, так как нарушены инварианты класса.
