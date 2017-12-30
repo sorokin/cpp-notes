@@ -24,7 +24,7 @@ framesep=2mm]
 {c++}
 container* create_container()
 {
-    container* c = new container();	
+    container* c = new container(); 
     try
     {
         fill(*c);
@@ -116,7 +116,7 @@ T* release()
 }
 \end{minted}
 
-\mintinline{c++}{reset(p)} - заменяет ptr, хранящийся внутри, на p, и делает \mintinline{c++}{delete} старому ptr.
+\mintinline{c++}{reset(p)} --- заменяет ptr, хранящийся внутри, на p, и делает \mintinline{c++}{delete} старому ptr.
 \begin{minted}[
 linenos,
 frame=lines,
@@ -166,7 +166,7 @@ unique_ptr(unique_ptr&& other) noexcept
 В некоторых случаях объект может иметь несколько владельцев. Это называется разделяемым владением и работает следующим образом: пока существует хотя бы один владелец объект продолжает жить, когда пропадает последний владелец --- объект удаляется. Для умных указателей существует два способа реализации разделяемого владения: подсчет ссылок и провязка всех владельцев в двусвязный список. Оба подхода имеют свои преимущества и недостатки. Подсчет ссылок применяется во включенном в стандартную библиотеку указателе \mintinline{c++}{std::shared_ptr}. Указатель использующий провязку владельцев в двусвязный список в стандартной библиотеке отсутствует, но часто называется \mintinline{c++}{linked_ptr}.
 
 \subsection{\mintinline{c++}{std::shared_ptr}}
-\mintinline{c++}{std::shared_ptr} - это умный указатель, с разделяемым владением объектов через его указатель. Несколько указателей могут владеть одним объектом. Объект будет уничтожен, когда последний \mintinline{c++}{shared_ptr} будет уничтожен или сброшен.
+\mintinline{c++}{std::shared_ptr} --- это умный указатель, с разделяемым владением объектов через его указатель. Несколько указателей могут владеть одним объектом. Объект будет уничтожен, когда последний \mintinline{c++}{shared_ptr} будет уничтожен или сброшен.
 
 \textcolor{red}{NB}) \mintinline{c++}{shared_ptr} может не указывать ни на какой объект.
 
@@ -251,7 +251,7 @@ shared_ptr<wheel> q(&p, wheel[2]); // мы переиспользуем p.counte
 
 \end{enumerate}
 \subsubsection{Weak\_ptr}
-\mintinline{c++}{std::weak_ptr} - умный указатель, который моделирует временное владение объектом.
+\mintinline{c++}{std::weak_ptr} --- умный указатель, который моделирует временное владение объектом.
 
 
 Ситуация: мы хотим хешировать картинки, которые хранять по \mintinline{c++}{std::shared_ptr}. То есть нам нужен мэп: name\_image $\to$ \mintinline{c++}{std::shared_ptr}. Но есть проблема, что если мы будем хранить в мэпе \mintinline{c++}{std::shared_ptr}, то они будут считать владельцами этих картинок, и они никогда не будут удаляться (если только их не удалить руками). В этой ситуации может помочь \mintinline{c++}{std::weak_ptr}.
@@ -260,7 +260,7 @@ shared_ptr<wheel> q(&p, wheel[2]); // мы переиспользуем p.counte
 Дело в том, что weak\_ptr содержит "слабую"\ ссылку на объект, управляемый указателем \mintinline{c++}{std::shared_ptr}. Для этого и нужен счетчик "слабых" сслылок в блоке управления \mintinline{c++}{std::shared_ptr}. Теперь блок управления считает еще и слабые сслыки и когда удаляется управляемый объект, блок управления остается жить, пока на него ссылается хотя бы один weak\_ptr, чтобы сообщать им о существовании объекта. Например с помощью метода \mintinline[breaklines]{c++}{std::weak_ptr::expired() // проверяет удален ли объект.}
 
 
-То есть все, что должен хранить внутри себя weak\_ptr - это указатель блок управления.
+То есть все, что должен хранить внутри себя weak\_ptr --- это указатель блок управления.
 
 
 Теперь вернемся к нашей задаче: мы сделаем мэп: name\_image $\to$ weak\_ptr.
@@ -283,7 +283,7 @@ shared_ptr<image> load_image(string const& name) {
 \end{minted}
 
 
-\textcolor{red}{NB}) Преобразования между \mintinline{c++}{std::shared_ptr} и weak\_ptr - это нормально. Только с его помощью можно обратиться к объекту weak\_ptr, не определяя новых указателей.
+\textcolor{red}{NB}) Преобразования между \mintinline{c++}{std::shared_ptr} и weak\_ptr --- это нормально. Только с его помощью можно обратиться к объекту weak\_ptr, не определяя новых указателей.
 
 
 \textcolor{red}{NB}) С помощью weak\_ptr можно решать циклические зависимости \mintinline{c++}{std::shared_ptr}. Суть проблемы в том, что объекты не могут удалиться, так как ссылаются друг на друга.
@@ -300,9 +300,11 @@ shared_ptr<B> bar;
 bar = make_shared<B>();
 
 foo = dynamic_pointer_cast<A>(bar);
-// иначе пришлось бы писать так:
-foo = shared_ptr<A>(dynamic_cast<A>(bar.get()));
-
+/*  
+иначе пришлось бы писать так:
+    foo = shared_ptr<A>(dynamic_cast<A>(bar.get()));
+но этот код - некорректный, т.к. он приводит к сплиту указателя, хранящегося в bar. После этого на этом объекте гарантировано будет вызван деструктор два раза.
+*/
 \end{minted}
 
 \subsection{\mintinline{c++}{linked_ptr}}
@@ -327,7 +329,7 @@ private:
 \end{minted}
 Члены prev и next помечены как \mintinline{c++}{mutable}, потому что в случае если мы имеем константный \mintinline{c++}{const linked_ptr& p1}, который передается в функцию, и неконстантный \mintinline{c++}{linked_ptr& p2}, который является его соседом в двусвязном списке, то при изменении p1 придется поменять prev и next у p2.
 
-Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object :
+Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object:
 
 \begin{minipage}[h]{0.4\linewidth}
 \centering
@@ -755,25 +757,25 @@ T& operator*() const { return *ptr; }
 \subsubsection{сравнение \mintinline{c++}{linked_ptr} и \mintinline{c++}{shared_ptr}}
 
 \begin{enumerate}
-\item \mintinline{c++}{std::shared_ptr} при передаче в конструктор указателя на объект аллоцирует еще 1 вспомогательный объект на хипе, а \mintinline{c++}{linked_ptr} - ничего. 
-\item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, по сравненею с двумя у \mintinline{c++}{shared_ptr}.
-\item \mintinline{c++}{std::shared_ptr} в стандартной библиотеке является thread-safe. Он использует атомарные операции инкремента и декремента для счетчика ссылок. Thread-safe \mintinline{c++}{linked_ptr} не может быть так просто реализован и требует использования уже thread-safe структур данных.
-\item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} должен только инкрементировать счетчик.
+\item При инициализации \mintinline{c++}{std::shared_ptr} сырым указателем, \mintinline{c++}{std::shared_ptr} аллоцирует дополнительный объект в куче для счетчика ссылок. \mintinline{c++}{linked_ptr} не аллоцирует дополнительной памяти.
+\item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, вместо двух у \mintinline{c++}{shared_ptr}.
+\item \mintinline{c++}{std::shared_ptr} в стандартной библиотеке является thread-safe. Он использует атомарные операции инкремента и декремента для счетчика ссылок. Thread-safe \mintinline{c++}{linked_ptr} не может быть так просто реализован.
+\item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} лишь инкрементирует счетчик.
 \end{enumerate}
 
 \subsection{\mintinline{c++}{intrusive_ptr}}
 
-\mintinline{c++}{intrusive_ptr} - также умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
+\mintinline{c++}{intrusive_ptr} --- умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
 
-Для использования \mintinline{c++}{intrusive_ptr<T>} требуется реализовать функции:
+Для использования \mintinline{c++}{intrusive_ptr} с пользовательским типом \mintinline{c++}{mytype} требуется реализовать функции:
 
 \begin{minted}[
 linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-int intrusive_ptr_add_ref(T* p);
-int intrusive_ptr_release(T* p);
+int intrusive_ptr_add_ref(mytype* p);
+int intrusive_ptr_release(mytype* p);
 \end{minted}
 
 Пример использования:
@@ -820,25 +822,25 @@ shared_ptr<T> make_shared(Args&&... args); // создает std::shared_ptr<T>,
 \end{minted}
 Исторически введение данного метода должно было решить проблему производительности \mintinline{c++}{std::shared_ptr}, аллоцируя внутри только один объект, содержащий одновременно и счетчик ссылок и объект типа T. Причем при вызове \mintinline{c++}{std::make_shared(args...)} на новом объекте типа T сразу вызовется конструктор с переданными аргументами. Таким образом такой конструктор-фабрика экономит аллокации памяти (вместо двух аллокаций: \mintinline{c++}{new T(args...)} и \mintinline{c++}{new counter()} происходит одна аллокация данных для пары (\mintinline{c++}{object}, \mintinline{c++}{counter}).
 
-Также введение такой функции в стандарт позволило решить проблему с гарантиями безопасности. Представим следующую ситуацию :
+Также введение такой функции в стандарт позволило решить проблему с гарантиями безопасности. Представим следующую ситуацию:
 \begin{minted}[
 linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-f(std::shared_ptr<Class>(new Class(“class”)), g());
+f(std::shared_ptr<Class>(new Class("class")), g());
 \end{minted}
 
-При этом \mintinline{c++}{g()} бросает исключение. Т.к. по стандарту нет гарантии порядка вычисления аргументов \mintinline{c++}{f}, то может произойти следующее : сначала создадим \mintinline{c++}{new Class()}, выделим память, потом - вызовем \mintinline{c++}{g()}, которое бросит исключение, после чего конструктор \mintinline{c++}{shared_ptr} уже не вызовется, т.к. бросился exception. А т.к. мы нигде не пишем слово \mintinline{c++}{delete}, то произойдет memory leak.
+При этом \mintinline{c++}{g()} бросает исключение. так как по стандарту нет гарантии порядка вычисления аргументов \mintinline{c++}{f}, то может произойти следующее: сначала создадим \mintinline{c++}{new Class()}, выделим память, потом --- вызовем \mintinline{c++}{g()}, которое бросит исключение, после чего конструктор \mintinline{c++}{shared_ptr} уже не вызовется, так как бросился exception. А так как мы нигде не пишем слово \mintinline{c++}{delete}, то произойдет memory leak.
 
-Теперь рассмотрим случай с \mintinline{c++}{make_shared} : 
+Теперь рассмотрим случай с \mintinline{c++}{make_shared}: 
 
 \begin{minted}[
 linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-f(std::make_shared<Class>(“class”), g());
+f(std::make_shared<Class>("class"), g());
 \end{minted}
 
 Если сначала вызовется \mintinline{c++}{g()}, то до конструктора \mintinline{c++}{Class} дело вообще не дойдет и упомянутой проблемы не возникнет. С другой стороны, если сначала вызовется \mintinline{c++}{make_shared}, то объект будет уже обернут в smart pointer и после исключения в \mintinline{c++}{g()} он будет автоматически удален!!!
@@ -847,7 +849,7 @@ f(std::make_shared<Class>(“class”), g());
 
 \subsection{Smart pointers pointing on this}
 
-Особый случай, когда нельзя просто так взять и использовать умные указатели бездумно --- это указатели на this, которые возвращает метод класса. Рассмотрим код :
+Особый случай, когда нельзя неосторожно использовать умные указатели --- это наличие указателей на this, которые возвращает метод класса. Рассмотрим код:
 
 \begin{minted}[
 linenos,
@@ -856,23 +858,23 @@ framesep=2mm]
 {c++}
 
 class SomeClass {
-	int data = 5;
-	std::shared_ptr f() {
-		return std::shared_ptr(this);
-	}
-	void foo() {}
+    int data = 5;
+    std::shared_ptr<SomeClass> f() {
+        return std::shared_ptr<SomeClass>(this);
+    }
+    void foo() {}
 }
 
 SomeClass obj;
 
 if (true) { // some scope
-	auto ptr = ob.f();
+    auto ptr = ob.f();
 } // exit scope (*)
 obj.foo();
 
 \end{minted}
 
-В этом примере при выхода из скоупа (*) т.к. умный указатель на obj создан всего 1, он вызовет деструктор \mintinline{c++}{obj}. Но при этом после этого мы уже не сможем его использовать (\mintinline{c++}{obj.foo()} уже некорректно). Поэтому для таких целей в stdlib есть интерфейс \mintinline{c++}{std::enable_shared_from_this}, оторый позволяет держать сильную ссылку на себя внутри самого объекта класса, который от него унаследован. В нашем случае :
+В этом примере при выхода из скоупа (*) так как умный указатель на obj создан всего один, он вызовет деструктор \mintinline{c++}{obj}. Но при этом после этого мы уже не сможем его использовать (\mintinline{c++}{obj.foo()} уже некорректно). Поэтому для таких целей в стандартной библиотеке есть интерфейс \mintinline{c++}{std::enable_shared_from_this}, который позволяет держать сильную ссылку на себя внутри самого объекта класса, который от него унаследован. В нашем случае:
 
 
 \begin{minted}[
@@ -882,11 +884,11 @@ framesep=2mm]
 {c++}
 
 class SomeClass: std::enable_shared_from_this<SomeClass> {
-	int data = 5;
-	std::shared_ptr f() {
-		return std::shared_ptr(this);
-	}
-	void foo() {}
+    int data = 5;
+    std::shared_ptr<SomeClass> f() {
+        return std::shared_ptr<SomeClass>(this);
+    }
+    void foo() {}
 }
 
 
@@ -894,7 +896,7 @@ SomeClass obj;
 
 
 if (true) { 
-	auto ptr = ob.f();
+    auto ptr = ob.f();
 } 
 obj.foo();
 
@@ -919,7 +921,7 @@ shared_ptr<Base> bp2(dp1);
 shared_ptr<Base> bp3(new Derived);
 
 \end{minted}
-Это корректный код. Но стоит отметить, что в этом случае т.к. указатель внутри будет хранится на \mintinline{c++}{Derived} объект, то деструктор будет вызван ровно его. Поэтому если он не объявлен как виртуальный, то это UB.
+Это корректный код. Но стоит отметить, что в этом случае так как указатель внутри будет хранится на \mintinline{c++}{Derived} объект, то деструктор будет вызван ровно его. Поэтому если он не объявлен как виртуальный, то это UB.
 Для явного каста указателей в стандартной библиотеке есть специальные методы:
 \begin{minted}[
 linenos,
@@ -930,17 +932,17 @@ framesep=2mm]
 derived_ptr = static_pointer_cast<Derived>(base_ptr);
 
 \end{minted}
-Этот стейтмент валиден т.и.т.т, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} - валидно, т.к. Ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Его основное преимущество - отсутствие необходимости писать \mintinline{c++}{.get()} вручную и тем самым необходимости работать с классическими голыми указателями.
+Этот стейтмент валиден т.и.т.т, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} --- валидно, так как Ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Использование \mintinline{c++}{static_pointer_cast} помогает избавиться от типичной ошибки --- использования \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} в явном виде. Это использование может привести к тому, что деструктор на управляемом объекте будет вызван дважды --- при вызове деструктора \mintinline{c++}{base_ptr} и при вызове деструктора  \mintinline{c++}{derived_ptr}.
 
 \subsection{доп. функции}
 \begin{enumerate}
-\item Умные указатели умеют каститься к \mintinline{c++}{bool} (\mintinline{c++}{true} т.и т.т., когда указываемый объект не \mintinline{c++}{nullptr})
+\item Умные указатели умеют каститься к \mintinline{c++}{bool} (\mintinline{c++}{true} тогда и только тогда, когда указываемый объект не \mintinline{c++}{nullptr})
 \item  Также для них определены операции сравнения \mintinline{c++}{==}, \mintinline{c++}{!=}, \mintinline{c++}{<}, которые сравнивают голые указатели внутри.
 \end{enumerate}
 
 \subsection{Performance test}
 
-Также уместно представить сравнение производительностей разных видов указателей. На приведенных графиках по оси OY отмечено среднее время соответствующей операции (в тактах процессора Intel Core i5-5257U @ 2.70GHz). Также отмечена дисперсия для каждого из измерений.
+Также уместно представить сравнение производительностей разных видов указателей. На графиках ниже по оси OY отмечено среднее время соответствующих операций над умными указателями. Это время приведено в тактах процессора (для измерений использовался Intel Core i5-5257U). Также отмечена дисперсия каждого из измерений.    
 
 \begin{minipage}[h]{0.4\linewidth}
 \centering
@@ -1462,4 +1464,3 @@ label("real usecase (decart treee) benchmark : ", (bench_width * 2.0, max_height
 %  \caption{\textsl{Figure text.}}
 %  \label{fig:whole_figure}
 %  \end{figure}
-
