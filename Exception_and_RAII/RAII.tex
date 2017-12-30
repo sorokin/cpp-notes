@@ -2,6 +2,102 @@
 \subsection{Пример}
 Начнем с примера. Пусть мы хотим открыть несколько файлов.
 
+% TODO: примеры
+bool process_files()
+{
+    FILE* f1 = fopen("foo");
+    if (!f1)
+        return false;
+
+    FILE* f2 = fopen("bar");
+    if (!f2)
+        return false;
+
+    FILE* f3 = fopen("baz");
+    if (!f3)
+        return false;
+
+    fclose(f3);
+    fclose(f2);
+    fclose(f1);
+    return true;
+}
+
+
+FILE* my_fopen(char const* filename)
+{
+    FILE* result = fopen(filename);
+    if (!result)
+        throw std::runtime_error("fopen failed");
+
+    return result;
+}
+
+void process_files()
+{
+    FILE* f1 = fopen("foo");
+    FILE* f2 = fopen("bar");
+    FILE* f3 = fopen("baz");
+
+    fclose(f3);
+    fclose(f2);
+    fclose(f1);
+}
+
+void process_files()
+{
+    FILE* f1 = fopen("foo");
+    try
+    {
+        FILE* f2 = fopen("bar");
+        try
+        {
+            FILE* f3 = fopen("baz");
+
+            try
+            {
+                // ...
+            }
+            catch (...)
+            {
+                fclose(f3);
+                throw;
+            }
+            fclose(f3);
+        }
+        catch (...)
+        {
+            fclose(f2);
+            throw;
+        }
+        fclose(f2);
+    }
+    catch (...)
+    {
+        fclose(f1);
+        throw;
+    }
+    fclose(f1);
+}
+
+void process_files()
+{
+    X* x = new X;
+    Y* y = new Y;
+    Z* z = new Z;
+
+    delete z;
+    delete y;
+    delete x;
+}
+
+void process_files()
+{
+    file f1("foo");
+    file f2("bar");
+    file f3("baz");
+}
+
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 void read_some_file() {
     open_for_read("first_part.txt");
