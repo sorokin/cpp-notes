@@ -332,6 +332,7 @@ private:
 \begin{minipage}[h]{0.49\linewidth}
 \centering
 \begin{asy}
+
 real arrow_len = 5;
 real box_h = arrow_len / 3.0;
 real box_w = box_h;
@@ -374,7 +375,7 @@ size(15cm,0);
 void draw_arrow(path p, real relative_pos, string text, align al) {
     draw(
         L=Label(
-            scale(0.5)*("$" + text + "$"),
+            scale(0.5)*("" + text + ""),
             position=Relative(relative_pos),
             gray,
             align = al
@@ -432,7 +433,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     if (x0 == obj_mid) {
         draw(
             L=Label(
-                scale(0.5)*"$ptr$",
+                scale(0.5)*"ptr",
                 position=Relative(0.7),
                 gray,
                 align=-N + W * 0.7
@@ -443,7 +444,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     } else if (x0 < obj_mid) 
         draw(
             L=Label(
-                scale(0.5)*"$ptr$",
+                scale(0.5)*"ptr",
                 position=Relative(0.6),
                 gray,
                 align=-N
@@ -454,7 +455,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     else
         draw(
             L=Label(
-                scale(0.5)*"$ptr$",
+                scale(0.5)*"ptr",
                 position=Relative(0.5),
                 gray,
                 align=-N
@@ -469,7 +470,7 @@ void draw_box(real x0, real x1, int i, real y0 = box_y0, real y1 = box_y1, pen c
     path ptr = box((x0, y0), (x1, y1));
     fill(ptr, color);
     draw(ptr, black);
-    label("$ptr" + string(i) + "$", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
+    label("ptr" + string(i) + "", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
 }
 
 void draw_last_arrows() {
@@ -483,7 +484,7 @@ void draw_last_arrows() {
 path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
 fill(obj, deepgreen);
 draw(obj, black);
-label("$object$", (obj_label_x, obj_label_y), white);
+label("object", (obj_label_x, obj_label_y), white);
 
 
 for (int i = 1; i <= box_count; ++i) {
@@ -543,7 +544,7 @@ size(15cm,0);
 void draw_arrow(path p, real relative_pos, string text, align al) {
     draw(
         L=Label(
-            scale(0.5)*("$" + text + "$"),
+            scale(0.5)*("" + text + ""),
             position=Relative(relative_pos),
             gray,
             align = al
@@ -601,7 +602,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     if (x0 == obj_mid) {
         draw(
             L=Label(
-                scale(0.5)*"$ptr$",
+                scale(0.5)*"ptr",
                 position=Relative(0.6),
                 gray,
                 align=-N + W * 0.7
@@ -612,7 +613,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     } else if (x0 < obj_mid) 
         draw(
             L=Label(
-                scale(0.5)*"$ptr$",
+                scale(0.5)*"ptr",
                 position=Relative(0.5),
                 gray,
                 align=-N
@@ -623,7 +624,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     else
         draw(
             L=Label(
-                scale(0.5)*"$ptr$",
+                scale(0.5)*"ptr",
                 position=Relative(0.5),
                 gray,
                 align=-N
@@ -638,7 +639,7 @@ void draw_box(real x0, real x1, int i, real y0 = box_y0, real y1 = box_y1, pen c
     path ptr = box((x0, y0), (x1, y1));
     fill(ptr, color);
     draw(ptr, black);
-    label("$ptr" + string(i) + "$", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
+    label("ptr" + string(i) + "", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
 }
 
 void draw_last_arrows() {
@@ -652,7 +653,7 @@ void draw_last_arrows() {
 path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
 fill(obj, deepgreen);
 draw(obj, black);
-label("$object$", (obj_label_x, obj_label_y), white);
+label("object", (obj_label_x, obj_label_y), white);
 
 
 for (int i = 1; i <= 2; ++i) {
@@ -674,6 +675,10 @@ draw_box(x4_0, x4_1, 4, y4_0, y4_1, brown);
 
 draw_curved_arrow((x2_1, arrow_left_y), (x4_0, y4_0 + arrow_left_offset), "next", false);
 draw_curved_arrow((x2_1, arrow_right_y), (x4_0, y4_0 + arrow_right_offset), "prev", true);
+
+//draw_curved_arrow((x4_1, y4_0 + arrow_left_offset), (x3_0, arrow_left_y), "next", false);
+//draw_curved_arrow((x4_1, y4_0 + arrow_right_offset), (x3_0, arrow_right_y), "prev", true);
+
 \end{asy}
 \end{minipage}
 \label{fig:prob1_6_2}
