@@ -99,8 +99,14 @@ void f(T&& param)
 			
 			Для их вывода применяются такие правила:
 			\begin{enumerate}
-				\item Если expr представляет собой lvalue, то и T и тип аргумента будут lvalue ссылками. Интересно, что это единственный случай, когда T выводится, как ссылка.
-				\item Если expr является rvalue, то у типа изначального игнорируется ссылочная часть и подставляется в T оставшееся
+				\item На место \textit{T} подставляется или \textit{lvalue} или \textit{rvalue} ссылка в зависимости от того какой обьект мы передали(\textit{lvalue} или \textit{rvalue})
+				
+				\item Происходит \textit{сжатие ссылок}
+				\begin{itemize}
+					\item Если T является \textit{lvalue}, то на выходе будет \textit{lvalue}. 
+					\item Если T является \textit{rvalue}, то на выходе будет \textit{rvalue}. 
+				\end{itemize}
+				
 			\end{enumerate}
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 int x;
@@ -108,21 +114,14 @@ const int cx;
 const int &rx;
 
 // Здесь x, cx, rx являются lvalue
-f(x)  // T - int&,       ParamType - int&
-f(cx) // T - const int&, ParamType - const int&
-f(rx) // T - const int&, ParamType - const int&
+f(x)  // T - int& -> void f(int& &&param) -> void f(int &param)
+f(cx) // T - const int& -> void f(const int& &&param) -> void f(const int &param)
+f(rx) // T - const int& -> void f(const int& &&param) -> void f(const int &param)
 
 // 27 - rvalue
-f(27) // T - int, ParamType - int&&
-\end{minted}
-			
-			Почему происходит так, а не иначе?
-			По идее должно быть правило, которое сопоставляет как взаимодействуют ссылки при T и ParamType. Всего получается четыре случая(\& и \&, \& и \&\& и так далее) В С++ есть такой механизм:
-			\begin{itemize}
-				\item Если где-то(или в T или в ParamType) есть \& - на выходе будет lvalue. 
-				\item Если у нас два \&, то на выходе будет rvalue. 
-			\end{itemize}
-			Но не надо забывать, что тип может быть rvalue-ссылкой, само значение все равно будет lvalue, потому что оно имеет имя. Именно из-за этого возникает проблема прямой передачи значений(perfect forwarding), о которой будет речь далее.
+f(27) // T - int&& -> void f(int&& &&param) -> void f(int &&param)
+\end{minted}	
+			Но не надо забывать, что тип может быть \textit{rvalue-ссылкой}, но само значение все равно будет \textit{lvalue}, потому что оно имеет имя. Именно из-за этого возникает проблема прямой передачи значений(perfect forwarding), о которой будет речь далее.
 			
 		\subsubsection{Особенности вывода типов для шаблонов}
 			\begin{enumerate}
@@ -156,7 +155,7 @@ struct not_deduced<char> { typedef T double; };
 template<>
 struct not_deduced<double> {typedef T double; };
 \end{minted}
-				Получается, что для \mintinline{c++}{double} есть два варианта \mintinline{c++}{non_deduced} и из-за этого неоднозначно выводится тип для double. 
+				Получается, что для \mintinline{c++}{double} есть два варианта \mintinline{c++}{non_deduced} и из-за этого неоднозначно выводится тип для \mintinline{c++}{double}. 
 				
 				Одно из применений \textit{Non-deduced context} - вывести специальный тип для данного контекста.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
@@ -334,9 +333,9 @@ g(res);
 		
 		\item \textbf{Использовать \mintinline{c++}{for (auto &&e : v)}}
 		
-		Бывают такие контейнеры, которые возвращают \textit{rvalue}-обьекты(например контейнер, который генерирует последовательность целых чисел, которые не хранятся в памяти). И если написать \mintinline{c++}{for(const auto &e : v)}, то можно придумать пример в котором он не будет работать. А при универсальной реализации будет работать \textit{reference collapsing rule} и все будет разделяться на \textit{rvalue} и \textit{lvalue}.
+		Контейнеры в \textit{С++} могут возвращать три типа данных: const lvalue, lvalue, rvalue. И чтобы обеспечить работу всех трех случаев не достаточно написать \mintinline{c++}{for(const auto &e : v)}, как делают многие. Если еще \textit{const lvalue} и \textit{rvalue} сработает, то если мы захотим изменять элементы контейнера, мы не сможем этого делать. 
 		
-		Стоит отметить, когда в e - \textit{rvalue}, то e продлевает жизнь возвращенному значению из контейнера.
+		Если сделать \mintinline{c++}{for (auto &e : v)}, то мы не сможем работать с \textit{const lvalue} обьектами. Поэтому лучше писать \mintinline{c++}{for (auto &&e : v)}. Для него будет работать \textit{сжатие ссылок}, которое обеспечивает корректную работу во всех случаях.
 		
 	\end{enumerate}
 
@@ -359,9 +358,9 @@ ReturnType f(As&& ... a) {
 	return g(forward<As>(a)...);
 }
 \end{minted}
-		То есть нам надо вернуть что-то, что возвращает функция \textbf{g}. Логично бы было написать вместо ReturnType \mintinline{c++}{decltype(g(forward<As>(a)...))}, но это не является правильным, потому что условно когда компилятор считывает \mintinline{c++}{decltype} он еще ничего не знает что такое \textbf{а}.
+		То есть нам надо вернуть такой тип, который возвращает функция \textbf{g}. Логично бы было написать \mintinline{c++}{decltype(g(forward<As>(a)...))}, но такой код не является корректным, потому что когда компилятор считывает \mintinline{c++}{decltype} он еще ничего не знает об \textbf{а}.
 		
-		Поэтому в \textit{С++11} был придуман новый синтаксис - завершающий возвращаемый тип. Он уже позволяет указывать в спецификации возвращаемого типа параметры функции. Вместо того, что было написано наверху можно написать так.
+		Поэтому в \textit{С++11} был придуман новый синтаксис - завершающий возвращаемый тип. Он уже позволяет указывать в спецификации возвращаемого типа параметры функции a. Вместо того, что было написано наверху можно написать так.
 		
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 template<typename... As>
