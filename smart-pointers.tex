@@ -329,7 +329,7 @@ private:
 
 Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object :
 
-\begin{minipage}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.4\linewidth}
 \centering
 \begin{asy}
 real arrow_len = 5;
@@ -493,12 +493,12 @@ for (int i = 1; i <= box_count; ++i) {
 }
 draw_last_arrows();
 \end{asy}
-% \label{fig:prob1_6_2}
+\label{fig:prob1_6_2}
 \end{minipage}
 
 При копировании \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} новый ptr4 вставляется в тот же список, где был исходный ptr2. После выполнения этой операции двусвязный список указателей будет выглядеть следующим образом:
 
-\begin{minipage}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.4\linewidth}
 \centering
 \begin{asy}
 real arrow_len = 5;
@@ -678,7 +678,7 @@ draw_curved_arrow((x2_1, arrow_right_y), (x4_0, y4_0 + arrow_right_offset), "pre
 //draw_curved_arrow((x4_1, y4_0 + arrow_left_offset), (x3_0, arrow_left_y), "next", false);
 //draw_curved_arrow((x4_1, y4_0 + arrow_right_offset), (x3_0, arrow_right_y), "prev", true);
 \end{asy}
-% \label{fig:prob1_6_3}
+\label{fig:prob1_6_2}
 \end{minipage}
 
 \begin{minted}[
@@ -942,7 +942,7 @@ derived_ptr = static_pointer_cast<Derived>(base_ptr);
 
 Также уместно представить сравнение производительностей разных видов указателей:
 
-\begin{minipage}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.4\linewidth}
 \centering
 \begin{asy}
 real linked = 221;
@@ -1123,7 +1123,7 @@ label("heap allocation", (unique_offset - label_offset, label_heigth), white);
 \end{asy}
 \end{minipage}
 
-\begin{minipage}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.4\linewidth}
 \begin{asy}
 real linked = 12;
 real shared = 48;
@@ -1233,7 +1233,7 @@ label("copy constructor benchmark : ", (bench_width * 2.0, max_height * 1.1));
 \end{asy}
 \end{minipage}
 
-\begin{minipage}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.4\linewidth}
 \begin{asy}
 real linked = 36;
 real shared = 5;
@@ -1343,7 +1343,7 @@ label("std::move benchmark : ", (bench_width * 2.0, max_height * 1.1));
 \end{asy}
 \end{minipage}
 
-\begin{minipage}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.4\linewidth}
 \begin{asy}
 real linked = 1187;
 real shared = 3527;
@@ -1454,7 +1454,7 @@ label("real usecase (decart treee) benchmark : ", (bench_width * 2.0, max_height
 \end{minipage}
 
 % \begin{figure}[h!]
-%  \begin{minipage}[h]{0.49\linewidth}{1.0\textwidth}
+%  \begin{minipage}[h]{0.4\linewidth}{1.0\textwidth}
 %   \centering
 %   \includegraphics{alloc}
 %      \label{fig:sub:subfigure1}
