@@ -329,7 +329,7 @@ private:
 
 Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object :
 
-\begin{minipage}[h]{0.49\linewidth}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.49\linewidth}
 \centering
 \begin{asy}
 real arrow_len = 5;
@@ -498,7 +498,7 @@ draw_last_arrows();
 
 При копировании \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} новый ptr4 вставляется в тот же список, где был исходный ptr2. После выполнения этой операции двусвязный список указателей будет выглядеть следующим образом:
 
-\begin{minipage}[h]{0.49\linewidth}[h]{0.49\linewidth}
+\begin{minipage}[h]{0.49\linewidth}
 \centering
 \begin{asy}
 real arrow_len = 5;
@@ -942,7 +942,7 @@ derived_ptr = static_pointer_cast<Derived>(base_ptr);
 
 Также уместно представить сравнение производительностей разных видов указателей:
 
-\begin{minipage}[h]{0.49\linewidth}[h]{0.5\linewidth}
+\begin{minipage}[h]{0.49\linewidth}
 \centering
 \begin{asy}
 real linked = 221;
