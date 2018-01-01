@@ -288,8 +288,21 @@ shared_ptr<image> load_image(string const& name) {
 
 \textcolor{red}{NB}) С помощью weak\_ptr можно решать циклические зависимости \mintinline{c++}{std::shared_ptr}. Суть проблемы в том, что объекты не могут удалиться, так как ссылаются друг на друга.
 
+\subsection{split умных указателей}
+
+Расмотрим следующий код:
+
+% TODO
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+A p = new A();
+shared_ptr<A> p1(p);
+shared_ptr<A> p2(p);
+\end{minted}
+
+Этот код --- некорректный, т.к. оба умных указателя указывают на один и тот же объект p, но при вызове конструктора 
+
 \subsection{Сast\_pointer}
-Что выполнять безоспасное приведение умных указателей можно искользовать слудующий синтаксис:
+Что выполнять безопасное приведение умных указателей можно искользовать следующий синтаксис:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 struct A {/*...*/};
 struct B: A {/*...*/};
@@ -300,11 +313,6 @@ shared_ptr<B> bar;
 bar = make_shared<B>();
 
 foo = dynamic_pointer_cast<A>(bar);
-/*  
-иначе пришлось бы писать так:
-    foo = shared_ptr<A>(dynamic_cast<A>(bar.get()));
-но этот код - некорректный, т.к. он приводит к сплиту указателя, хранящегося в bar. После этого на этом объекте гарантировано будет вызван деструктор два раза.
-*/
 \end{minted}
 
 \subsection{\mintinline{c++}{linked_ptr}}
@@ -767,16 +775,18 @@ T& operator*() const { return *ptr; }
 
 \mintinline{c++}{intrusive_ptr} --- умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
 
-Для использования \mintinline{c++}{intrusive_ptr} с пользовательским типом \mintinline{c++}{mytype} требуется реализовать функции:
+Для использования \mintinline{c++}{intrusive_ptr} с пользовательским типом \mintinline{c++}{mytype} требуется реализовать две функции:
 
 \begin{minted}[
 linenos,
 frame=lines,
 framesep=2mm]
 {c++}
-int intrusive_ptr_add_ref(mytype* p);
-int intrusive_ptr_release(mytype* p);
+void intrusive_ptr_add_ref(mytype* p);
+void intrusive_ptr_release(mytype* p);
 \end{minted}
+
+Функция intrusive_ptr_add_ref вызывается, когда требуется увеличить счетчик ссылок. Функция intrusive_ptr_release вызывается тогда, когда требуется его уменьшить и если он достигает нуля, то требуется самостоятельно удалить объект.
 
 Пример использования:
 
@@ -874,7 +884,7 @@ obj.foo();
 
 \end{minted}
 
-В этом примере при выхода из скоупа (*) так как умный указатель на obj создан всего один, он вызовет деструктор \mintinline{c++}{obj}. Но при этом после этого мы уже не сможем его использовать (\mintinline{c++}{obj.foo()} уже некорректно). Поэтому для таких целей в стандартной библиотеке есть интерфейс \mintinline{c++}{std::enable_shared_from_this}, который позволяет держать сильную ссылку на себя внутри самого объекта класса, который от него унаследован. В нашем случае:
+В этом примере при выхода из области видимости (*) так как умный указатель на obj создан всего один, он вызовет деструктор \mintinline{c++}{obj}. Но при этом после этого мы уже не сможем его использовать (\mintinline{c++}{obj.foo()} уже некорректно). Поэтому для таких целей в стандартной библиотеке есть интерфейс \mintinline{c++}{std::enable_shared_from_this}, который позволяет держать сильную ссылку на себя внутри самого объекта класса, который от него унаследован. В нашем случае:
 
 
 \begin{minted}[
@@ -902,7 +912,7 @@ obj.foo();
 
 \end{minted}
 
-Такой код будет уже корректный.
+Такой код будет уже корректный. Таким образом использование интерфейса \mintinline{c++}{std::enable_shared_from_this} позволяет избежать проблемы сплита указателей.
 
 \subsection{smart pointers и наследование}
 
@@ -932,7 +942,7 @@ framesep=2mm]
 derived_ptr = static_pointer_cast<Derived>(base_ptr);
 
 \end{minted}
-Этот стейтмент валиден т.и.т.т, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} --- валидно, так как Ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Использование \mintinline{c++}{static_pointer_cast} помогает избавиться от типичной ошибки --- использования \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} в явном виде. Это использование может привести к тому, что деструктор на управляемом объекте будет вызван дважды --- при вызове деструктора \mintinline{c++}{base_ptr} и при вызове деструктора  \mintinline{c++}{derived_ptr}.
+Этот стейтмент валиден тогда и только тогда, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} --- валидно, так как ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Использование \mintinline{c++}{static_pointer_cast} помогает избавиться от типичной ошибки --- использования \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} в явном виде. Это использование может привести к тому, что деструктор на управляемом объекте будет вызван дважды --- при вызове деструктора \mintinline{c++}{base_ptr} и при вызове деструктора  \mintinline{c++}{derived_ptr}.
 
 \subsection{доп. функции}
 \begin{enumerate}
