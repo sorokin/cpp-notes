@@ -291,29 +291,41 @@ shared_ptr<image> load_image(string const& name) {
 \subsection{split умных указателей}
 
 Расмотрим следующий код:
-
-% TODO
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-A p = new A();
-shared_ptr<A> p1(p);
-shared_ptr<A> p2(p);
+SomeClass p = new SomeClass();
+shared_ptr<SomeClass> p1(p);
+shared_ptr<SomeClass> p2(p);
 \end{minted}
-
-Этот код --- некорректный, т.к. оба умных указателя указывают на один и тот же объект p, но при вызове конструктора 
+Этот код --- некорректный, т.к. оба умных указателя указывают на один и тот же объект p, но при вызове конструктора от p каждый из умных указателей создаст свой счетчик ссылок, проинициализировав его значением 1. При выходе из области видимости каждый из созданных умных указателей попытается удалить объект p, продекрементировав свой счетчик ссылок. В обоих случаях он станет равным нулю, после чего будет дважды вызван деструктор на объекте p. Описанная ситуация называется разделением (split) умных указателей.
 
 \subsection{Сast\_pointer}
-Что выполнять безопасное приведение умных указателей можно искользовать следующий синтаксис:
+Рассмотрим пример кода:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-struct A {/*...*/};
-struct B: A {/*...*/};
+struct Base {/*...*/};
+struct Derived: Base {/*...*/};
 
-shared_ptr<A> foo;
-shared_ptr<B> bar;
+shared_ptr<Base> foo;
+shared_ptr<Derived> bar;
 /*...*/
-bar = make_shared<B>();
+bar = make_shared<Derived>();
 
-foo = dynamic_pointer_cast<A>(bar);
+foo = shared_ptr<Base>(dynamic_cast<Base*>(bar.get()));
 \end{minted}
+В приведенном примере кода происходит создание умного указателя на базовый класс от уже имеющегося умного указателя на производный класс. Но этот код содержит ту же ошибку, что была рассмотрена в предыдущем параграфе --- указатели foo и bar указывают на один и тот же объект. 
+Чтобы выполнять безопасное приведение умных указателей можно искользовать следующий синтаксис:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct Base {/*...*/};
+struct Derived: Base {/*...*/};
+
+shared_ptr<Base> foo;
+shared_ptr<Derived> bar;
+/*...*/
+bar = make_shared<Derived>();
+
+foo = dynamic_pointer_cast<Base>(bar);
+\end{minted}
+
+Функция \mintinline{c++}{dynamic_pointer_cast<Derived>(ptr)} принимает умный указатель ptr на объект типа Base и возвращает другой умный указатель на тот же объект, но приведенный к типу Derived. Внутри себя \mintinline{c++}{dynamic_pointer_cast<Base>} использует \mintinline{c++}{dynamic_cast<Base*>} для приведения типов, а также инкрементирует счетчики ссылок для умных указателей. Благодаря этому split'а умных указателей не происходит и деструктор на переданном в \mintinline{c++}{dynamic_pointer_cast} объекте будет вызван ровно один раз.
 
 \subsection{\mintinline{c++}{linked_ptr}}
 
@@ -786,7 +798,7 @@ void intrusive_ptr_add_ref(mytype* p);
 void intrusive_ptr_release(mytype* p);
 \end{minted}
 
-Функция intrusive_ptr_add_ref вызывается, когда требуется увеличить счетчик ссылок. Функция intrusive_ptr_release вызывается тогда, когда требуется его уменьшить и если он достигает нуля, то требуется самостоятельно удалить объект.
+Функция \mintinline{c++}{intrusive_ptr_add_ref} вызывается, когда требуется увеличить счетчик ссылок. Функция \mintinline{c++}{intrusive_ptr_release} вызывается тогда, когда требуется его уменьшить и если он достигает нуля, то требуется самостоятельно удалить объект.
 
 Пример использования:
 
@@ -942,7 +954,7 @@ framesep=2mm]
 derived_ptr = static_pointer_cast<Derived>(base_ptr);
 
 \end{minted}
-Этот стейтмент валиден тогда и только тогда, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} --- валидно, так как ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Использование \mintinline{c++}{static_pointer_cast} помогает избавиться от типичной ошибки --- использования \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} в явном виде. Это использование может привести к тому, что деструктор на управляемом объекте будет вызван дважды --- при вызове деструктора \mintinline{c++}{base_ptr} и при вызове деструктора  \mintinline{c++}{derived_ptr}.
+Этот стейтмент валиден тогда и только тогда, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} --- валидно, так как ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Использование \mintinline{c++}{static_pointer_cast} помогает избавиться от типичной ошибки --- использования \mintinline{c++}{static_cast<Derived*>(base_ptr.get())} в явном виде, приводящего к split'у умных указателей.
 
 \subsection{доп. функции}
 \begin{enumerate}
