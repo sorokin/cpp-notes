@@ -272,6 +272,7 @@ shared_ptr<T> p(new T());
 Если конструктор \mintinline{c++}{shared_ptr} при ошибке аллокации счетчика ссылок не будет удалять переданный указатель, то этот указатель нигде не будет удалён и любой код аналогичный листингу \ref{listing:shared_ptr_attach_to_object} был бы ошибочным. Поэтому конструктор \mintinline{c++}{shared_ptr} от указателя удаляет объект, если происходит ошибка аллокации счетчика ссылок. Можно сказать что конструктор \mintinline{c++}{shared_ptr} забирает владение указателем даже если он бросает исключение.
 
 \subsubsection{Проблема разделения счетчика ссылок}
+\label{reference_counter_split_problem}
 
 Расмотрим следующий код:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
@@ -318,7 +319,7 @@ private:
 \end{minted}
 
 \subsubsection{Aliasing конструктор}
-
+\label{aliasing_constructor}
 Иногда необходимо продлевать жизнь объекту, пока кто-то ссылается на его поля. Для этого существует специальный конструтор, называемый {\it aliasing конструктор}:
 
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
@@ -483,33 +484,35 @@ private:
 
 Для поддержки \mintinline{c++}{weak_ptr}, \mintinline{c++}{shared_count} содержит два счетчика ссылок: один для обычных (сильных) ссылок и один для слабых ссылок. Достижение счетчика сильных нуля влечет удаление управляемого объекта, достичение обоих счетчиков нуля влечет удаление \mintinline{c++}{shared_count}'а.
 
-\subsection{Сast\_pointer}
-Рассмотрим пример кода:
+\subsection{Приведение умных указателей}
+
+Встроенные операторы приведения типа \mintinline{c++}{static_cast}, \mintinline{c++}{dynamic_cast}, \mintinline{c++}{reinterpret_cast}, \mintinline{c++}{const_cast} определены для обычных указателей. Для умных они либо не работают (\mintinline{c++}{dynamic_cast}, \mintinline{c++}{reinterpret_cast}, \mintinline{c++}{const_cast}), либо делают другую операцию (\mintinline{c++}{static_cast}).
+
+Что делать если существует например \mintinline{c++}{shared_ptr<B>} и ему требуется сделать \mintinline{c++}{dynamic_cast} к \mintinline{c++}{shared_ptr<D>}? Наивная попытка могла бы выглядеть следующим образом:
+
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-struct Base {/*...*/};
-struct Derived: Base {/*...*/};
-
-shared_ptr<Base> foo;
-shared_ptr<Derived> bar;
-/*...*/
-bar = make_shared<Derived>();
-
-foo = shared_ptr<Base>(dynamic_cast<Base*>(bar.get()));
-\end{minted}
-В приведенном примере кода происходит создание умного указателя на базовый класс от уже имеющегося умного указателя на производный класс. Но этот код содержит ту же ошибку, что была рассмотрена в предыдущем параграфе --- split умных указателей: указатели \mintinline{c++}{foo} и \mintinline{c++}{bar} указывают на один и тот же объект, а их счетчики ссылок не были продекрементированы в момент вызова конструктора \mintinline{c++}{foo}. \\ Чтобы выполнять безопасное приведение умных указателей можно искользовать следующий синтаксис:
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-struct Base {/*...*/};
-struct Derived: Base {/*...*/};
-
-shared_ptr<Base> foo;
-shared_ptr<Derived> bar;
-/*...*/
-bar = make_shared<Derived>();
-
-foo = dynamic_pointer_cast<Base>(bar);
+shared_ptr<B> base;
+shared_ptr<D> derived = shared_ptr<D>(dynamic_cast<D*>(base.get()));
 \end{minted}
 
-Функция \mintinline{c++}{dynamic_pointer_cast<Derived>(ptr)} принимает умный указатель ptr на объект типа Base и возвращает другой умный указатель на тот же объект, но приведенный к типу Derived. Внутри себя \mintinline{c++}{dynamic_pointer_cast<Base>} использует \mintinline{c++}{dynamic_cast<Base*>} для приведения типов, а также инкрементирует счетчики ссылок для умных указателей. Благодаря этому split'а умных указателей не происходит и деструктор на переданном в \mintinline{c++}{dynamic_pointer_cast} объекте будет вызван ровно один раз.
+Однако данный код приводит к разделению счетчика ссылок (\ref{reference_counter_split_problem}). Чтобы не разделять счетчик ссылок следует использовать aliasing конструктор (\ref{aliasing_constructor}):
+
+\begin{listing}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+shared_ptr<B> base;
+shared_ptr<D> derived = shared_ptr<D>(base, dynamic_cast<D*>(base.get()));
+\end{minted}
+\caption{Использование aliasing конструктора для \mintinline{c++}{dynamic_cast}'а \mintinline{c++}{shared_ptr}'ов}
+\label{listing:downcasting_using_aliasing_constructor}
+\end{listing}
+
+В стандартной библиотеке существуют функции использующие aliasing конструктор и делающие приведение типов. Они называются \mintinline{c++}{static_pointer_cast}, \mintinline{c++}{dynamic_pointer_cast} и \mintinline{c++}{const_pointer_cast}. \mintinline{c++}{reinterpret_pointer_cast} присутствует в библиотеке Boost, но по какой-то причине отсутствует в стандартной библиотеке.
+
+С использованием \mintinline{c++}{dynamic_pointer_cast} пример \ref{listing:downcasting_using_aliasing_constructor} может быть переписан следующим образом:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+shared_ptr<B> base;
+shared_ptr<D> derived = dynamic_pointer_cast<D>(base);
+\end{minted}
 
 \subsection{\mintinline{c++}{linked_ptr}}
 
