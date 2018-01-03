@@ -1,6 +1,6 @@
 \section{Умные указатели}
 
-Рассмотрим следующий код:
+Рассмотрим следующий код: 
 
 \begin{minted}[
 linenos,
@@ -24,7 +24,7 @@ framesep=2mm]
 {c++}
 container* create_container()
 {
-    container* c = new container();
+    container* c = new container(); 
     try
     {
         fill(*c);
@@ -55,8 +55,8 @@ std::unique_ptr<container> create_container()
 }
 \end{minted}
 
-\subsection{unique\_ptr}
-Самым простым умным указателем является \mintinline{c++}{std::unique_ptr}.
+\subsection{\mintinline{c++}{std::unique_ptr}}
+Самым простым умным указателем является \mintinline{c++}{std::unique_ptr}. 
 Внутри себя \mintinline{c++}{std::unique_ptr} хранит один указатель \mintinline{c++}{T* ptr} и делает ему \mintinline{c++}{delete} в дескрукторе.
 
 \begin{minted}[
@@ -116,7 +116,7 @@ T* release()
 }
 \end{minted}
 
-\mintinline{c++}{reset(p)} - заменяет ptr, хранящийся внутри, на p, и делает \mintinline{c++}{delete} старому ptr.
+\mintinline{c++}{reset(p)} --- заменяет ptr, хранящийся внутри, на p, и делает \mintinline{c++}{delete} старому ptr.
 \begin{minted}[
 linenos,
 frame=lines,
@@ -149,7 +149,7 @@ framesep=2mm]
 {c++}
 unique_ptr& operator=(unique_ptr&& other) noexcept
 {
-    reset(other.release());
+    reset(other.release()); 
     return *this;
 }
 
@@ -159,8 +159,1327 @@ unique_ptr(unique_ptr&& other) noexcept
 \end{minted}
 
 \subsection{Владение}
-Ответственность за удаление объекта называется владением. Например, unique\_ptr ответственен за удаление объекта на который он ссылается, соответственно говорят, что unique\_ptr владеет объектом, на который он ссылается. Про функцию \mintinline{c++}{reset(p)} говорят, что она передает владение объектом unique\_ptr'у, а функция \mintinline{c++}{release()}, наоборот, забирает владение объектом у unique\_ptr'а.
+Ответственность за удаление объекта называется владением. Например, \mintinline{c++}{std::unique_ptr} ответственен за удаление объекта на который он ссылается, соответственно говорят, что \mintinline{c++}{std::unique_ptr} владеет объектом, на который он ссылается. Про функцию \mintinline{c++}{reset(p)} говорят, что она передает владение объектом \mintinline{c++}{std::unique_ptr}'у, а функция \mintinline{c++}{release()}, наоборот, забирает владение объектом у \mintinline{c++}{std::unique_ptr}'а.
 
 Термин владение применяется не только к умным указателям, например можно сказать, что std::vector владеет памятью выделенной под свои элементы (обязан её освободить), а также владеет своими элементами (обязан вызывать им деструктор).
 
-В некоторых случаях объект может иметь несколько владельцев. Это называется разделяемым владением и работает следующим образом: пока существует хотя бы один владелец объект продолжает жить, когда пропадает последний владелец --- объект удаляется. Для умных указателей существует два способа реализации разделяемого владения: подсчет ссылок и провязка всех владельцев в двусвязный список. Оба подхода имеют свои преимущества и недостатки. Подсчет ссылок применяется во включенном в стандартную библиотеку указателе std::shared\_ptr. Указатель использующий провязку владельцев в двусвязный список в стандартной библиотеке отсутствует, но часто называется linked\_ptr.
+В некоторых случаях объект может иметь несколько владельцев. Это называется разделяемым владением и работает следующим образом: пока существует хотя бы один владелец объект продолжает жить, когда пропадает последний владелец --- объект удаляется. Для умных указателей существует два способа реализации разделяемого владения: подсчет ссылок и провязка всех владельцев в двусвязный список. Оба подхода имеют свои преимущества и недостатки. Подсчет ссылок применяется во включенном в стандартную библиотеку указателе \mintinline{c++}{std::shared_ptr}. Указатель использующий провязку владельцев в двусвязный список в стандартной библиотеке отсутствует, но часто называется \mintinline{c++}{linked_ptr}.
+
+\subsection{\mintinline{c++}{std::shared_ptr}}
+\mintinline{c++}{std::shared_ptr} --- это умный указатель, с разделяемым владением объектов через его указатель. Несколько указателей могут владеть одним объектом. Объект будет уничтожен, когда последний \mintinline{c++}{shared_ptr} будет уничтожен или сброшен.
+
+\textcolor{red}{NB}) \mintinline{c++}{shared_ptr} может не указывать ни на какой объект.
+
+\subsubsection{Наивная реализация.}
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename D>
+struct shared_ptr {
+    T* obj; // указатель на объект управления
+    size_t* counter; // счетчик ссылок, обнуление которого влечет удаление объекта
+    D *deleter; // функция, которая удаляет объект
+    shared_ptr(*T, D const& deleter);
+}
+
+\end{minted}
+
+
+
+\textcolor{red}{NB}) \textbf{Зачем делитер, если можно всегда вызвать деструктор объекта?} Ответ: Ингда мы хотим реализовать следующую схему пользования объектом: 1) мы берем объект из ресурса. 2) пользуемся им. 3) Потом возвращаем его от куда взяли, когда он стал нам не нужен.
+
+\subsubsection{Оптимизация по памяти.}
+На самом деле все немного сложнее: нам может понядобиться хранить в нашем smart\_ptr аллокатор, счетчик weak\_ptr (об этом позднее), указалеть на объект управления. Поэтому имеет смысл хранить все это в одном объекте, для оптимизации выделения памяти под smart\_ptr. С учетом выше указанного:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename D>
+struct shared_ptr {
+    T* obj; // указатель на объект управления
+    struct control_block {
+        size_t* counter; // счетчик ссылок, обнуление которого влечет удаление объекта
+        D *deleter; // функция, которая удаляет объект
+    }* con_bl;
+    shared_ptr(*T, D const& deleter);
+};
+
+\end{minted}
+
+
+\textcolor{red}{NB}) если создавать \mintinline{c++}{std::shared_ptr} с помощью конструктора, то память будет распределяться как выше указанно, но если создать \mintinline{c++}{std::shared_ptr} с помошью \mintinline{c++}{std::make_shared(new T)}\footnote{создает объект и оборачивает его в \mintinline{c++}{std::shared_ptr}}, то память выделится только один раз, и объект будет лежать рядом с блоком управления. Поэтому лучше использовать последний способ где это возможно, чтобы снизить оверхед от "умности"\ указателя.
+
+\subsubsection{Специальный конструтор.}
+Иногда мы хотим продлевать объекту жизнь, если что-то ссылается на его поля. Для этого существует специальный конструтор:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct car {
+    Wheel wheel[4];
+}
+// У нас есть машина с колесами. Мы хотим, чтобы пока мы умеет живой указатель на колесо, машина тоже не удалялась вместе с колесами.
+/* ... */
+shared_ptr<car> p;
+shared_ptr<wheel> q(&p, wheel[2]); // мы переиспользуем p.counter для q.
+
+\end{minted}
+Для этого наверно, будет полезно иметь ссылку на объект в блоке управления.\footnote{Мнение автора.}
+
+
+\textcolor{red}{NB}) Еще одно применение этой фичи: мы хотим хранить дерево по \mintinline{c++}{std::shared_ptr}, чтобы когда мы удалили корень, дерево само удалиться. Тогда с помощью этого, конструктора можно гарантировать, что если есть указатель на вершины дерева, то можно гарантировать, что по нему можно пробежаться.
+
+\subsubsection{Заметки по использованию.}
+\begin{enumerate}
+    \item
+    Возможно глупый пример, но все же.
+    \begin{minted}[
+    linenos,
+    frame=lines,
+    framesep=2mm,
+    tabsize = 4,
+    breaklines]
+    {c++}
+
+    int *silly_ptr = new int(5);
+    shared_ptr<int> a1(silly_ptr);
+    shared_ptr<int> b1(silly_ptr);
+    // b1.counter = a1.counter = 1;
+    // разные управляющие блоки
+    shared_ptr<int> a2(silly_ptr);
+    shared_ptr<int> b2(a2);
+    // b2.counter = a2.counter = 2;
+    // одинаковые
+
+    \end{minted}
+
+
+\end{enumerate}
+\subsubsection{Weak\_ptr}
+\mintinline{c++}{std::weak_ptr} --- умный указатель, который моделирует временное владение объектом.
+
+
+Ситуация: мы хотим хешировать картинки, которые хранять по \mintinline{c++}{std::shared_ptr}. То есть нам нужен мэп: name\_image $\to$ \mintinline{c++}{std::shared_ptr}. Но есть проблема, что если мы будем хранить в мэпе \mintinline{c++}{std::shared_ptr}, то они будут считать владельцами этих картинок, и они никогда не будут удаляться (если только их не удалить руками). В этой ситуации может помочь \mintinline{c++}{std::weak_ptr}.
+
+
+Дело в том, что weak\_ptr содержит "слабую"\ ссылку на объект, управляемый указателем \mintinline{c++}{std::shared_ptr}. Для этого и нужен счетчик "слабых" сслылок в блоке управления \mintinline{c++}{std::shared_ptr}. Теперь блок управления считает еще и слабые сслыки и когда удаляется управляемый объект, блок управления остается жить, пока на него ссылается хотя бы один weak\_ptr, чтобы сообщать им о существовании объекта. Например с помощью метода \mintinline[breaklines]{c++}{std::weak_ptr::expired() // проверяет удален ли объект.}
+
+
+То есть все, что должен хранить внутри себя weak\_ptr --- это указатель блок управления.
+
+
+Теперь вернемся к нашей задаче: мы сделаем мэп: name\_image $\to$ weak\_ptr.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+map<string, weak_ptr<image>> cache;
+shared_ptr<image> load_image(string const& name) {
+    auto i = cache.find(name);
+    if (i != cache.end()) {
+        shared_ptr<image> temp = i->second.lock(); // создаем shared_ptr, который управляет объектом, которым управляет i. Если объект удален temp будет пустой.
+        if (temp) {// проверка на то, что temp не пуст
+            return temp;
+        }
+    }
+    // если картинки нет в кэше загружаем ее.
+    shared_ptr<image> temp = real_load(name);
+    cache[name] = temp; // переобразование weak_ptr(shared_ptr);
+    return temp;
+}
+
+\end{minted}
+
+
+\textcolor{red}{NB}) Преобразования между \mintinline{c++}{std::shared_ptr} и weak\_ptr --- это нормально. Только с его помощью можно обратиться к объекту weak\_ptr, не определяя новых указателей.
+
+
+\textcolor{red}{NB}) С помощью weak\_ptr можно решать циклические зависимости \mintinline{c++}{std::shared_ptr}. Суть проблемы в том, что объекты не могут удалиться, так как ссылаются друг на друга.
+
+\subsection{split умных указателей}
+
+Расмотрим следующий код:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+SomeClass p = new SomeClass();
+shared_ptr<SomeClass> p1(p);
+shared_ptr<SomeClass> p2(p);
+\end{minted}
+Этот код --- некорректный, т.к. оба умных указателя указывают на один и тот же объект p, но при вызове конструктора от p каждый из умных указателей создаст свой счетчик ссылок, проинициализировав его значением 1. При выходе из области видимости каждый из созданных умных указателей попытается удалить объект p, продекрементировав свой счетчик ссылок. В обоих случаях он станет равным нулю, после чего будет дважды вызван деструктор на объекте p. Описанная ситуация называется разделением (split) умных указателей.
+
+\subsection{Сast\_pointer}
+Рассмотрим пример кода:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct Base {/*...*/};
+struct Derived: Base {/*...*/};
+
+shared_ptr<Base> foo;
+shared_ptr<Derived> bar;
+/*...*/
+bar = make_shared<Derived>();
+
+foo = shared_ptr<Base>(dynamic_cast<Base*>(bar.get()));
+\end{minted}
+В приведенном примере кода происходит создание умного указателя на базовый класс от уже имеющегося умного указателя на производный класс. Но этот код содержит ту же ошибку, что была рассмотрена в предыдущем параграфе --- split умных указателей: указатели \mintinline{c++}{foo} и \mintinline{c++}{bar} указывают на один и тот же объект, а их счетчики ссылок не были продекрементированы в момент вызова конструктора \mintinline{c++}{foo}. \\ Чтобы выполнять безопасное приведение умных указателей можно искользовать следующий синтаксис:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct Base {/*...*/};
+struct Derived: Base {/*...*/};
+
+shared_ptr<Base> foo;
+shared_ptr<Derived> bar;
+/*...*/
+bar = make_shared<Derived>();
+
+foo = dynamic_pointer_cast<Base>(bar);
+\end{minted}
+
+Функция \mintinline{c++}{dynamic_pointer_cast<Derived>(ptr)} принимает умный указатель ptr на объект типа Base и возвращает другой умный указатель на тот же объект, но приведенный к типу Derived. Внутри себя \mintinline{c++}{dynamic_pointer_cast<Base>} использует \mintinline{c++}{dynamic_cast<Base*>} для приведения типов, а также инкрементирует счетчики ссылок для умных указателей. Благодаря этому split'а умных указателей не происходит и деструктор на переданном в \mintinline{c++}{dynamic_pointer_cast} объекте будет вызван ровно один раз.
+
+\subsection{\mintinline{c++}{linked_ptr}}
+
+\mintinline{c++}{linked_ptr} --- умный указатель с разделяемым владением, реализованный с помощью двусвязного списка.\\
+\mintinline{c++}{linked_ptr} хранит в себе указатель на объект и два указателя на соседние \mintinline{c++}{linked_ptr}'ы в двусвязном списке. Для каждого двусвязного списка образованного из \mintinline{c++}{linked_ptr}'ов верно, что все указатели в нём владеют одним общим объектом.
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template <class T> struct linked_ptr
+{
+    ...
+private:
+    T* ptr;
+    mutable linked_ptr* prev; 
+    mutable linked_ptr* next; 
+};
+\end{minted}
+Члены prev и next помечены как \mintinline{c++}{mutable}, потому что в случае если мы имеем константный \mintinline{c++}{const linked_ptr& p1}, который передается в функцию, и неконстантный \mintinline{c++}{linked_ptr& p2}, который является его соседом в двусвязном списке, то при изменении p1 придется поменять prev и next у p2.\\
+Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object:\\
+
+\begin{minipage}[h]{0.4\linewidth}
+\centering
+\begin{asy}
+real arrow_len = 5;
+real box_h = arrow_len / 3.0;
+real box_w = box_h;
+real box_count = 3;
+real object_box_w = 2 * box_w;
+
+real get_x0(int i) {
+    return arrow_len * i + box_w * (i - 1);
+}
+
+real get_x1(int i) {
+    return get_x0(i) + box_w;
+}
+
+real obj_x0 = get_x0(2) - box_w / 2.0;
+real obj_x1 = obj_x0 + object_box_w;
+real obj_y0 = 0;
+real obj_y1 = box_h;
+
+real eps = arrow_len / 10.0;
+
+real obj_label_x = (obj_x0 + obj_x1) / 2.0;
+real obj_label_y = (obj_y0 + obj_y1) / 2.0;
+
+real box_y0 = obj_y1 + arrow_len;
+real box_y1 = box_y0 + box_h;
+
+real box_label_x_offset = box_w / 2.0;
+real box_label_y_offset = box_h / 2.0;
+
+real arrow_left_offset = box_h * 2.0 / 3.0;
+real arrow_right_offset = box_h * 1.0 / 3.0;
+real arrow_left_y = box_y0 + arrow_left_offset;
+real arrow_right_y = box_y0 + arrow_right_offset;
+real arrow_down_offset = box_w * 0.5;
+
+real label_offset = box_h / 6.0;
+size(15cm,0);
+
+void draw_arrow(path p, real relative_pos, string text, align al) {
+    draw(
+        L=Label(
+            scale(0.5)*("" + text + ""),
+            position=Relative(relative_pos),
+            gray,
+            align = al
+        ),
+        p,
+        arrow=Arrow
+    );
+}
+
+void draw_strait_arrows(real x0, real x1, real len = arrow_len) {
+    real rel_pos = 0.75 + 0.22 * (1 - arrow_len / len);
+    draw_arrow((x0 - len, arrow_left_y) -- (x0, arrow_left_y), rel_pos, "next", (E + N / 2.0));
+    draw_arrow((x0, arrow_right_y) -- (x0 - len, arrow_right_y), rel_pos, "prev", (W - N / 2.0));
+}
+
+void draw_curved_arrow(pair p0, pair p3, string text, bool reversed = false) {
+    real delta = arrow_len * (1.0 / 3.0);
+    pair p1 = (xpart(p0) + delta, ypart(p0));
+    pair p2 = (xpart(p3) - delta, ypart(p3));
+    pair add = (arrow_len / 10.0, 0);
+    if (reversed) {
+        p1 -= add;
+        p2 -= add - (0, box_h / 10.0);
+    } else {
+        p1 += add - (0, box_h / 10.0);
+        p2 += add;
+    }
+    p2 += 0.3 * (p1 - p2);
+    p1 -= 0.3 * (p1 - p2);
+    pair p1_5 = (p1 + p2) / 2.0;
+
+    //draw(circle(p1, 0.1), red);
+    //draw(circle(p1_5, 0.1), magenta);
+    //draw(circle(p2, 0.1), blue);
+
+    path p = p0{right}..{down}p1{down}..{left}p1_5{left}..{down}p2{down}..{right}p3;
+    draw_arrow(reversed ? reverse(p) : p, 0.938, text, reversed ? N : -N);
+
+    pair q0 = p3 + box_w, q1 = p2 + (box_w + 2 * (xpart(p3) - xpart(p2)), 0), q3 = p0 + arrow_len, q2 = p1 + (arrow_len - 2 * (xpart(p1) - xpart(p0)), 0);
+    pair q1_5 = (q1 + q2) / 2.0;
+
+    //draw(circle(q1, 0.1), red);
+    //draw(circle(q1_5, 0.1), magenta);
+    //draw(circle(q2, 0.1), blue);
+
+    p = q0{right}..{up}q1{up}..{left}q1_5{left}..{up}q2{up}..{right}q3;
+    draw_arrow(reversed ? reverse(p) : p, 0.938, text, reversed ? N : -N);
+}
+
+void draw_arrow_to_obj(real x0, real y0) {
+    pair p0 = (x0, y0);
+    real obj_mid = (obj_x0 + obj_x1) / 2.0;
+    pair p1 = (obj_mid + (x0 - obj_mid) / 1.5, obj_y1 + arrow_len / 2.0 - abs(x0 - obj_mid) / 7.0);
+    pair p2 = (obj_mid+ (x0 - obj_mid) / 50.0, obj_y1);
+    if (x0 == obj_mid) {
+        draw(
+            L=Label(
+                scale(0.5)*"ptr",
+                position=Relative(0.7),
+                gray,
+                align=-N + W * 0.7
+            ),
+            p0 -- p2,
+            arrow=Arrow
+        );
+    } else if (x0 < obj_mid) 
+        draw(
+            L=Label(
+                scale(0.5)*"ptr",
+                position=Relative(0.6),
+                gray,
+                align=-N
+            ),
+            p0{down}..{right}p1{right}..{down}p2,
+            arrow=Arrow
+        );
+    else
+        draw(
+            L=Label(
+                scale(0.5)*"ptr",
+                position=Relative(0.5),
+                gray,
+                align=-N
+            ),
+            p0{down}..{left}p1{left}..{down}p2,
+            arrow=Arrow
+        );
+}
+
+void draw_box(real x0, real x1, int i, real y0 = box_y0, real y1 = box_y1, pen color=royalblue) {
+    draw_arrow_to_obj(x0 + arrow_down_offset, y0);
+    path ptr = box((x0, y0), (x1, y1));
+    fill(ptr, color);
+    draw(ptr, black);
+    label("ptr" + string(i) + "", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
+}
+
+void draw_last_arrows() {
+    int last_index = (int)box_count + 1;
+    real last_x0 = get_x0(last_index) - arrow_len / 2;
+    real last_x1 = get_x1(last_index) - arrow_len / 2;
+    draw_strait_arrows(last_x0, last_x1, arrow_len / 2);
+}
+
+
+path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
+fill(obj, deepgreen);
+draw(obj, black);
+label("object", (obj_label_x, obj_label_y), white);
+
+
+for (int i = 1; i <= box_count; ++i) {
+    real x0 = get_x0(i), x1 = get_x1(i);
+    draw_strait_arrows(x0, x1, i == 1 ? arrow_len / 2 : arrow_len);
+    draw_box(x0, x1, i);
+}
+draw_last_arrows();
+\end{asy}
+\label{fig:prob1_6_2}
+\end{minipage}
+
+При копировании \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} новый ptr4 вставляется в тот же список, где был исходный ptr2. После выполнения этой операции двусвязный список указателей будет выглядеть следующим образом:\\
+
+\begin{minipage}[h]{0.4\linewidth}
+\centering
+\begin{asy}
+real arrow_len = 5;
+real box_h = arrow_len / 3.0;
+real box_w = box_h;
+real box_count = 3;
+real object_box_w = 2 * box_w;
+
+real get_x0(int i) {
+    return arrow_len * i + box_w * (i - 1);
+}
+
+real get_x1(int i) {
+    return get_x0(i) + box_w;
+}
+
+real obj_x0 = get_x0(2) - box_w / 2.0;
+real obj_x1 = obj_x0 + object_box_w;
+real obj_y0 = 0;
+real obj_y1 = box_h;
+
+real eps = arrow_len / 10.0;
+
+real obj_label_x = (obj_x0 + obj_x1) / 2.0;
+real obj_label_y = (obj_y0 + obj_y1) / 2.0;
+
+real box_y0 = obj_y1 + arrow_len;
+real box_y1 = box_y0 + box_h;
+
+real box_label_x_offset = box_w / 2.0;
+real box_label_y_offset = box_h / 2.0;
+
+real arrow_left_offset = box_h * 2.0 / 3.0;
+real arrow_right_offset = box_h * 1.0 / 3.0;
+real arrow_left_y = box_y0 + arrow_left_offset;
+real arrow_right_y = box_y0 + arrow_right_offset;
+real arrow_down_offset = box_w * 0.5;
+
+real label_offset = box_h / 6.0;
+size(15cm,0);
+
+void draw_arrow(path p, real relative_pos, string text, align al) {
+    draw(
+        L=Label(
+            scale(0.5)*("" + text + ""),
+            position=Relative(relative_pos),
+            gray,
+            align = al
+        ),
+        p,
+        arrow=Arrow
+    );
+}
+
+void draw_strait_arrows(real x0, real x1, real len = arrow_len) {
+    real rel_pos = 0.75 + 0.22 * (1 - arrow_len / len);
+    draw_arrow((x0 - len, arrow_left_y) -- (x0, arrow_left_y), rel_pos, "next", (E + N / 2.0));
+    draw_arrow((x0, arrow_right_y) -- (x0 - len, arrow_right_y), rel_pos, "prev", (W - N / 2.0));
+}
+
+void draw_curved_arrow(pair p0, pair p3, string text, bool reversed = false) {
+    real delta = arrow_len * (1.0 / 3.0);
+    pair p1 = (xpart(p0) + delta, ypart(p0));
+    pair p2 = (xpart(p3) - delta, ypart(p3));
+    pair add = (arrow_len / 10.0, 0);
+    if (reversed) {
+        p1 -= add;
+        p2 -= add - (0, box_h / 10.0);
+    } else {
+        p1 += add - (0, box_h / 10.0);
+        p2 += add;
+    }
+    p2 += 0.3 * (p1 - p2);
+    p1 -= 0.3 * (p1 - p2);
+    pair p1_5 = (p1 + p2) / 2.0;
+
+    //draw(circle(p1, 0.1), red);
+    //draw(circle(p1_5, 0.1), magenta);
+    //draw(circle(p2, 0.1), blue);
+
+    path p = p0{right}..{down}p1{down}..{left}p1_5{left}..{down}p2{down}..{right}p3;
+    draw_arrow(reversed ? reverse(p) : p, 0.938, text, reversed ? N : -N);
+
+    pair q0 = p3 + box_w, q1 = p2 + (box_w + 2 * (xpart(p3) - xpart(p2)), 0), q3 = p0 + arrow_len, q2 = p1 + (arrow_len - 2 * (xpart(p1) - xpart(p0)), 0);
+    pair q1_5 = (q1 + q2) / 2.0;
+
+    //draw(circle(q1, 0.1), red);
+    //draw(circle(q1_5, 0.1), magenta);
+    //draw(circle(q2, 0.1), blue);
+
+    p = q0{right}..{up}q1{up}..{left}q1_5{left}..{up}q2{up}..{right}q3;
+    draw_arrow(reversed ? reverse(p) : p, 0.938, text, reversed ? N : -N);
+}
+
+void draw_arrow_to_obj(real x0, real y0) {
+    pair p0 = (x0, y0);
+    real obj_mid = (obj_x0 + obj_x1) / 2.0;
+    pair p1 = (obj_mid + (x0 - obj_mid) / 1.5, obj_y1 + arrow_len / 2.0 - abs(x0 - obj_mid) / 7.0);
+    pair p2 = (obj_mid+ (x0 - obj_mid) / 50.0, obj_y1);
+    if (x0 == obj_mid) {
+        draw(
+            L=Label(
+                scale(0.5)*"ptr",
+                position=Relative(0.6),
+                gray,
+                align=-N + W * 0.7
+            ),
+            p0 -- p2,
+            arrow=Arrow
+        );
+    } else if (x0 < obj_mid) 
+        draw(
+            L=Label(
+                scale(0.5)*"ptr",
+                position=Relative(0.5),
+                gray,
+                align=-N
+            ),
+            p0{down}..{right}p1{right}..{down}p2,
+            arrow=Arrow
+        );
+    else
+        draw(
+            L=Label(
+                scale(0.5)*"ptr",
+                position=Relative(0.5),
+                gray,
+                align=-N
+            ),
+            p0{down}..{left}p1{left}..{down}p2,
+            arrow=Arrow
+        );
+}
+
+void draw_box(real x0, real x1, int i, real y0 = box_y0, real y1 = box_y1, pen color=royalblue) {
+    draw_arrow_to_obj(x0 + arrow_down_offset, y0);
+    path ptr = box((x0, y0), (x1, y1));
+    fill(ptr, color);
+    draw(ptr, black);
+    label("ptr" + string(i) + "", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
+}
+
+void draw_last_arrows() {
+    int last_index = (int)box_count + 1;
+    real last_x0 = get_x0(last_index) - arrow_len / 2;
+    real last_x1 = get_x1(last_index) - arrow_len / 2;
+    draw_strait_arrows(last_x0, last_x1, arrow_len / 2);
+}
+
+
+path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
+fill(obj, deepgreen);
+draw(obj, black);
+label("object", (obj_label_x, obj_label_y), white);
+
+
+for (int i = 1; i <= 2; ++i) {
+    real x0 = get_x0(i), x1 = get_x1(i);
+    draw_strait_arrows(x0, x1, i == 1 ? arrow_len / 2 : arrow_len);
+    draw_box(x0, x1, i);
+}
+draw_last_arrows();
+
+real x2_0 = get_x0(2), x2_1 = get_x1(2), x3_0 = get_x0(3), x3_1 = get_x1(3);
+real x4_0 = x2_1 + (arrow_len - box_w) / 2.0;
+real x4_1 = x4_0 + box_w;
+real y4_0 = box_y0 - arrow_len / 2.0;
+real y4_1 = y4_0 + box_h;
+
+draw_box(x3_0, x3_1, 3);
+
+draw_box(x4_0, x4_1, 4, y4_0, y4_1, brown);
+
+draw_curved_arrow((x2_1, arrow_left_y), (x4_0, y4_0 + arrow_left_offset), "next", false);
+draw_curved_arrow((x2_1, arrow_right_y), (x4_0, y4_0 + arrow_right_offset), "prev", true);
+
+//draw_curved_arrow((x4_1, y4_0 + arrow_left_offset), (x3_0, arrow_left_y), "next", false);
+//draw_curved_arrow((x4_1, y4_0 + arrow_right_offset), (x3_0, arrow_right_y), "prev", true);
+\end{asy}
+\label{fig:prob1_6_2}
+\end{minipage}
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+linked_ptr(linked_ptr const& other) noexcept
+    : ptr(other.ptr)
+{
+    if (ptr == nullptr) {
+        prev = next = nullptr;
+        return;
+    }
+    prev = &other;
+    next = other.next;
+    prev->next = this;
+    next->prev = this;
+}
+\end{minted}
+
+При удалении \mintinline{c++}{linked_ptr} он удаляется из двусвязного списка. Если он был единственным элементом списка то он удаляет сам объект:
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+~linked_ptr() noexcept 
+{
+    if (!ptr) return;
+    if (prev == this)
+        delete ptr;
+    if (prev) prev->next = next;
+    if (next) next->prev = prev;
+}
+
+\end{minted}
+
+Move-конструктор у \mintinline{c++}{linked_ptr} может выглядеть следующим образом:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+linked_ptr(linked_ptr&& other) noexcept
+    : ptr(other.ptr)
+    , prev(other.prev)
+    , next(other.next)
+{
+    other.prev = other.next = nullptr;
+    other.ptr = nullptr;
+    if (this->prev) 
+        this->prev->next = this;
+    if (this->next) 
+        this->next->prev = this;
+}
+\end{minted}
+Заметим, что в отличае от конструктора копирования нужно занулять члены other, потому что на нем будет вызван деструктор.
+
+\mintinline{c++}{linked_ptr} реализует операции \mintinline{c++}{get()}, \mintinline{c++}{operator*} и \mintinline{c++}{operator->}, как и другие умные указатели:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+T* get() const noexcept { return ptr; } // разыменование указателя
+T* operator->() const noexcept { return ptr; } // вызов мембера объекта, на который указывает linked_ptr
+T& operator*() const { return *ptr; }
+\end{minted}
+
+\subsubsection{сравнение \mintinline{c++}{linked_ptr} и \mintinline{c++}{shared_ptr}}
+
+\begin{enumerate}
+\item При инициализации \mintinline{c++}{std::shared_ptr} сырым указателем, \mintinline{c++}{std::shared_ptr} аллоцирует дополнительный объект в куче для счетчика ссылок. \mintinline{c++}{linked_ptr} не аллоцирует дополнительной памяти.
+\item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, вместо двух у \mintinline{c++}{shared_ptr}.
+\item \mintinline{c++}{std::shared_ptr} в стандартной библиотеке является thread-safe. Он использует атомарные операции инкремента и декремента для счетчика ссылок. Thread-safe \mintinline{c++}{linked_ptr} не может быть так просто реализован.
+\item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} лишь инкрементирует счетчик.
+\end{enumerate}
+
+\subsection{\mintinline{c++}{intrusive_ptr}}
+
+\mintinline{c++}{intrusive_ptr} --- умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
+
+Для использования \mintinline{c++}{intrusive_ptr} с пользовательским типом \mintinline{c++}{mytype} требуется реализовать две функции:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+void intrusive_ptr_add_ref(mytype* p);
+void intrusive_ptr_release(mytype* p);
+\end{minted}
+
+Функция \mintinline{c++}{intrusive_ptr_add_ref} вызывается, когда требуется увеличить счетчик ссылок. Функция \mintinline{c++}{intrusive_ptr_release} вызывается тогда, когда требуется его уменьшить и если он достигает нуля, то требуется самостоятельно удалить объект.
+
+Пример использования:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+#include <boost/intrusive_ptr.hpp>
+
+class Test {
+public:
+    int ref_count;
+};
+
+void intrusive_ptr_add_ref(Test *p) {
+    ++p->ref_count;
+}
+
+void intrusive_ptr_release(Test *p) {
+    if (0 == --p->ref_count)
+        delete p;
+}
+
+int main() {
+    boost::intrusive_ptr<Test> p(new Test()); // аллоцированный объект, переданный в конструктор будет удален при выходе из main
+}
+\end{minted}
+
+Замечание: \mintinline{c++}{boost::intrusive_ptr} эффективнее \mintinline{c++}{std::shared_ptr}, поскольку пользователь сам может встроить эффективный счетчик ссылок для своего объекта. Причем контракт функций \mintinline{c++}{intrusive_ptr_add_ref} и \mintinline{c++}{intrusive_ptr_release} такой, что они не накладывают строгие ограничения на счетчик ссылок, кроме того, что \mintinline{c++}{intrusive_ptr_release} должен удалить объект, когда удаляется последний его владелец. Поэтому если планируется использование разделяемого smart-pointer’а для класса, реализуемого самим пользователем, то лучше юзать \mintinline{c++}{intrusive_ptr}, а в случае если приходится иметь дело с библиотечным классом, то \mintinline{c++}{std::shared_ptr}.
+
+\subsection{make\_shared / make\_unique}
+
+Как было сказано ранее, помимо стандартных конструкторов от указателя стандарт предлагает фабрики для создания объектов, определенные следующим образом (рассмотрим на примере \mintinline{c++}{std::shared_ptr}): 
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template<typename T, typename... Args>
+shared_ptr<T> make_shared(Args&&... args); // создает std::shared_ptr<T>, указывающий на объект T(args...)
+\end{minted}
+Исторически введение данного метода должно было решить проблему производительности \mintinline{c++}{std::shared_ptr}, аллоцируя внутри только один объект, содержащий одновременно и счетчик ссылок и объект типа T. Причем при вызове \mintinline{c++}{std::make_shared(args...)} на новом объекте типа T сразу вызовется конструктор с переданными аргументами. Таким образом такой конструктор-фабрика экономит аллокации памяти (вместо двух аллокаций: \mintinline{c++}{new T(args...)} и \mintinline{c++}{new counter()} происходит одна аллокация данных для пары (\mintinline{c++}{object}, \mintinline{c++}{counter}).
+
+Также введение такой функции в стандарт позволило решить проблему с гарантиями безопасности. Представим следующую ситуацию:
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+f(std::shared_ptr<Class>(new Class("class")), g());
+\end{minted}
+
+При этом \mintinline{c++}{g()} бросает исключение. так как по стандарту нет гарантии порядка вычисления аргументов \mintinline{c++}{f}, то может произойти следующее: сначала создадим \mintinline{c++}{new Class()}, выделим память, потом --- вызовем \mintinline{c++}{g()}, которое бросит исключение, после чего конструктор \mintinline{c++}{shared_ptr} уже не вызовется, так как бросился exception. А так как мы нигде не пишем слово \mintinline{c++}{delete}, то произойдет memory leak.
+
+Теперь рассмотрим случай с \mintinline{c++}{make_shared}: 
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+f(std::make_shared<Class>("class"), g());
+\end{minted}
+
+Если сначала вызовется \mintinline{c++}{g()}, то до конструктора \mintinline{c++}{Class} дело вообще не дойдет и упомянутой проблемы не возникнет. С другой стороны, если сначала вызовется \mintinline{c++}{make_shared}, то объект будет уже обернут в smart pointer и после исключения в \mintinline{c++}{g()} он будет автоматически удален!!!
+
+Начиная с c++14 аналогичная функция-фабрика \mintinline{c++}{std::make_unique} была добавлена и для \mintinline{c++}{std::unique_ptr}. Это позволило не использовать в коде не только \mintinline{c++}{delete}, но и голый \mintinline{c++}{new} (no naked new) для обоих видов умных указателей, включенных в стандартную библиотеку.
+
+\subsection{Smart pointers pointing on this}
+
+Особый случай, когда нельзя неосторожно использовать умные указатели --- это наличие указателей на this, которые возвращает метод класса. Рассмотрим код:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+class SomeClass {
+    int data = 5;
+    std::shared_ptr<SomeClass> f() {
+        return std::shared_ptr<SomeClass>(this);
+    }
+    void foo() {}
+}
+
+SomeClass obj;
+
+if (true) { // some scope
+    auto ptr = ob.f();
+} // exit scope (*)
+obj.foo();
+
+\end{minted}
+
+В этом примере при выхода из области видимости (*) так как умный указатель на obj создан всего один, он вызовет деструктор \mintinline{c++}{obj}. Но при этом после этого мы уже не сможем его использовать (\mintinline{c++}{obj.foo()} уже некорректно). Поэтому для таких целей в стандартной библиотеке есть интерфейс \mintinline{c++}{std::enable_shared_from_this}, который позволяет держать сильную ссылку на себя внутри самого объекта класса, который от него унаследован. В нашем случае:
+
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+class SomeClass: std::enable_shared_from_this<SomeClass> {
+    int data = 5;
+    std::shared_ptr<SomeClass> f() {
+        return std::shared_ptr<SomeClass>(this);
+    }
+    void foo() {}
+}
+
+
+SomeClass obj;
+
+
+if (true) { 
+    auto ptr = ob.f();
+} 
+obj.foo();
+
+\end{minted}
+
+Такой код будет уже корректный. Таким образом использование интерфейса \mintinline{c++}{std::enable_shared_from_this} позволяет избежать проблемы сплита указателей.
+
+\subsection{smart pointers и наследование}
+
+В стандартной библиотеке умные указатели сделаны так, что если присваивания объекта типа \mintinline{c++}{A} может быть произведено в объект типа \mintinline{c++}{B}, то присваивания объекта типа \mintinline{c++}{smart_pointer<A>} может быть произведено в объект типа \mintinline{c++}{smart_pointer<B>}.
+В том числе:
+ 
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+shared_ptr<Derived> dp1(new Derived); 
+shared_ptr<Base> bp1 = dp1; 
+shared_ptr<Base> bp2(dp1); 
+shared_ptr<Base> bp3(new Derived);
+
+\end{minted}
+Это корректный код. Но стоит отметить, что в этом случае так как указатель внутри будет хранится на \mintinline{c++}{Derived} объект, то деструктор будет вызван ровно его. Поэтому если он не объявлен как виртуальный, то это UB.
+Для явного каста указателей в стандартной библиотеке есть специальные методы:
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+
+derived_ptr = static_pointer_cast<Derived>(base_ptr);
+
+\end{minted}
+Этот стейтмент валиден тогда и только тогда, когда \mintinline{c++}{static_cast<Derived *>(base_ptr.get())} --- валидно, так как ровно на его основе метод \mintinline{c++}{static_pointer_cast} реализован. Использование \mintinline{c++}{static_pointer_cast} помогает избавиться от типичной ошибки --- использования \mintinline{c++}{static_cast<Derived*>(base_ptr.get())} в явном виде, приводящего к split'у умных указателей.
+
+\subsection{доп. функции}
+\begin{enumerate}
+\item Умные указатели умеют каститься к \mintinline{c++}{bool} (\mintinline{c++}{true} тогда и только тогда, когда указываемый объект не \mintinline{c++}{nullptr})
+\item  Также для них определены операции сравнения \mintinline{c++}{==}, \mintinline{c++}{!=}, \mintinline{c++}{<}, которые сравнивают голые указатели внутри.
+\end{enumerate}
+
+\subsection{Performance test}
+
+Также уместно представить сравнение производительностей разных видов указателей. На графиках ниже по оси OY отмечено среднее время соответствующих операций над умными указателями. Это время приведено в тактах процессора (для измерений использовался Intel Core i5-5257U). Также отмечена дисперсия каждого из измерений.    
+
+\begin{minipage}[h]{0.4\linewidth}
+\centering
+\begin{asy}
+real linked = 221;
+real shared = 572;
+real intrusive = 214;
+real unique = 239;
+real linked_disp = 0;
+real shared_disp = 2;
+real intrusive_disp = 8;
+real unique_disp = 6;real bench_width = 312.0;
+real max_height = 572;
+
+real arrow_offset = bench_width / 4.0 * 1.1;
+real point_offset = arrow_offset * 2 / 3;
+real linked_offset = arrow_offset + bench_width;
+real shared_offset = arrow_offset + 2 * bench_width;
+real intrusive_offset = arrow_offset + 3 * bench_width;
+real unique_offset = arrow_offset + 4 * bench_width;
+real label_offset = (shared_offset - linked_offset) / 2.0;
+
+size(20cm,0);
+draw((arrow_offset / 2, 0) -- (arrow_offset / 2, max_height),arrow=Arrow);
+
+label(
+    scale(0.5) * ("" + string(linked) + ""),
+    (point_offset, linked),
+    black
+);
+label(
+    scale(0.5) * ("" + string(shared) + ""),
+    (point_offset, shared),
+    black
+);
+label(
+    scale(0.5) * ("" + string(intrusive) + ""),
+    (point_offset, intrusive),
+    black
+);
+label(
+    scale(0.5) * ("" + string(unique) + ""),
+    (point_offset, unique),
+    black
+);
+path lin = box((arrow_offset,0), (linked_offset,linked));
+fill(lin, deepgreen);
+
+path sha = box((linked_offset,0), (shared_offset,shared));
+fill(sha, royalblue);
+
+path intr = box((shared_offset,0), (intrusive_offset,intrusive));
+fill(intr, magenta);
+
+path uniq = box((intrusive_offset,0), (unique_offset,unique));
+fill(uniq, heavyred);
+
+real disp_eps = bench_width / 20.0;
+draw(
+    (arrow_offset, linked) 
+    -- (arrow_offset, linked + linked_disp) 
+    -- (arrow_offset + disp_eps, linked + linked_disp) 
+    -- (arrow_offset - disp_eps, linked + linked_disp) 
+    -- (arrow_offset, linked + linked_disp)
+    -- (arrow_offset, linked - linked_disp)
+    -- (arrow_offset + disp_eps, linked - linked_disp) 
+    -- (arrow_offset - disp_eps, linked - linked_disp) 
+    -- (arrow_offset, linked - linked_disp)
+, gray);
+draw(
+    (linked_offset, shared) 
+    -- (linked_offset, shared + shared_disp) 
+    -- (linked_offset + disp_eps, shared + shared_disp) 
+    -- (linked_offset - disp_eps, shared + shared_disp) 
+    -- (linked_offset, shared + shared_disp)
+    -- (linked_offset, shared - shared_disp)
+    -- (linked_offset + disp_eps, shared - shared_disp) 
+    -- (linked_offset - disp_eps, shared - shared_disp) 
+    -- (linked_offset, shared - shared_disp)
+, gray);
+draw(
+    (shared_offset, intrusive) 
+    -- (shared_offset, intrusive + intrusive_disp) 
+    -- (shared_offset + disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset, intrusive + intrusive_disp)
+    -- (shared_offset, intrusive - intrusive_disp)
+    -- (shared_offset + disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset, intrusive - intrusive_disp)
+, gray);
+draw(
+    (intrusive_offset, unique) 
+    -- (intrusive_offset, unique + unique_disp) 
+    -- (intrusive_offset + disp_eps, unique + unique_disp) 
+    -- (intrusive_offset - disp_eps, unique + unique_disp) 
+    -- (intrusive_offset, unique + unique_disp)
+    -- (intrusive_offset, unique - unique_disp)
+    -- (intrusive_offset + disp_eps, unique - unique_disp) 
+    -- (intrusive_offset - disp_eps, unique - unique_disp) 
+    -- (intrusive_offset, unique - unique_disp)
+, gray);
+
+real label_delta = 0.05 * max(max(linked, shared), max(intrusive, unique));
+label("linked\underline{\hspace{0.3cm}}ptr", (linked_offset - label_offset, linked + label_delta), black);
+label("std::shared\underline{\hspace{0.3cm}}ptr", (shared_offset - label_offset, shared + label_delta), black);
+label("boost::intruisive\underline{\hspace{0.3cm}}ptr", (intrusive_offset - label_offset, intrusive + label_delta), black);
+label("std::unique\underline{\hspace{0.3cm}}ptr", (unique_offset - label_offset, unique + label_delta), black);
+label("allocation/deallocation benchmark : ", (bench_width * 2.0, max_height * 1.1));
+real linked = 178;
+real shared = 357;
+real intrusive = 195;
+real unique = 178;
+real linked_disp = 4;
+real shared_disp = 9;
+real intrusive_disp = 3;
+real unique_disp = 4;path lin = box((arrow_offset,0), (linked_offset,linked));
+fill(lin, black);
+
+path sha = box((linked_offset,0), (shared_offset,shared));
+fill(sha, black);
+
+path intr = box((shared_offset,0), (intrusive_offset,intrusive));
+fill(intr, black);
+
+path uniq = box((intrusive_offset,0), (unique_offset,unique));
+fill(uniq, black);
+
+real disp_eps = bench_width / 20.0;
+draw(
+    (arrow_offset, linked) 
+    -- (arrow_offset, linked + linked_disp) 
+    -- (arrow_offset + disp_eps, linked + linked_disp) 
+    -- (arrow_offset - disp_eps, linked + linked_disp) 
+    -- (arrow_offset, linked + linked_disp)
+    -- (arrow_offset, linked - linked_disp)
+    -- (arrow_offset + disp_eps, linked - linked_disp) 
+    -- (arrow_offset - disp_eps, linked - linked_disp) 
+    -- (arrow_offset, linked - linked_disp)
+, gray);
+draw(
+    (linked_offset, shared) 
+    -- (linked_offset, shared + shared_disp) 
+    -- (linked_offset + disp_eps, shared + shared_disp) 
+    -- (linked_offset - disp_eps, shared + shared_disp) 
+    -- (linked_offset, shared + shared_disp)
+    -- (linked_offset, shared - shared_disp)
+    -- (linked_offset + disp_eps, shared - shared_disp) 
+    -- (linked_offset - disp_eps, shared - shared_disp) 
+    -- (linked_offset, shared - shared_disp)
+, gray);
+draw(
+    (shared_offset, intrusive) 
+    -- (shared_offset, intrusive + intrusive_disp) 
+    -- (shared_offset + disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset, intrusive + intrusive_disp)
+    -- (shared_offset, intrusive - intrusive_disp)
+    -- (shared_offset + disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset, intrusive - intrusive_disp)
+, gray);
+draw(
+    (intrusive_offset, unique) 
+    -- (intrusive_offset, unique + unique_disp) 
+    -- (intrusive_offset + disp_eps, unique + unique_disp) 
+    -- (intrusive_offset - disp_eps, unique + unique_disp) 
+    -- (intrusive_offset, unique + unique_disp)
+    -- (intrusive_offset, unique - unique_disp)
+    -- (intrusive_offset + disp_eps, unique - unique_disp) 
+    -- (intrusive_offset - disp_eps, unique - unique_disp) 
+    -- (intrusive_offset, unique - unique_disp)
+, gray);
+
+real label_heigth=bench_width / 4.0;
+label("heap allocation", (linked_offset - label_offset, label_heigth), white);
+label("heap allocation", (shared_offset - label_offset, label_heigth), white);
+label("heap allocation", (intrusive_offset - label_offset, label_heigth), white);
+label("heap allocation", (unique_offset - label_offset, label_heigth), white);
+\end{asy}
+\end{minipage}
+
+\begin{minipage}[h]{0.4\linewidth}
+\begin{asy}
+real linked = 12;
+real shared = 48;
+real intrusive = 10;
+real unique = 0;
+real linked_disp = 0;
+real shared_disp = 0;
+real intrusive_disp = 0;
+real unique_disp = 0;real bench_width = 18.0;
+real max_height = 48;
+
+real arrow_offset = bench_width / 4.0 * 1.1;
+real point_offset = arrow_offset * 2 / 3;
+real linked_offset = arrow_offset + bench_width;
+real shared_offset = arrow_offset + 2 * bench_width;
+real intrusive_offset = arrow_offset + 3 * bench_width;
+real unique_offset = arrow_offset + 4 * bench_width;
+real label_offset = (shared_offset - linked_offset) / 2.0;
+
+size(20cm,0);
+draw((arrow_offset / 2, 0) -- (arrow_offset / 2, max_height),arrow=Arrow);
+
+label(
+    scale(0.5) * ("" + string(linked) + ""),
+    (point_offset, linked),
+    black
+);
+label(
+    scale(0.5) * ("" + string(shared) + ""),
+    (point_offset, shared),
+    black
+);
+label(
+    scale(0.5) * ("" + string(intrusive) + ""),
+    (point_offset, intrusive),
+    black
+);
+label(
+    scale(0.5) * ("" + string(unique) + ""),
+    (point_offset, unique),
+    black
+);
+path lin = box((arrow_offset,0), (linked_offset,linked));
+fill(lin, deepgreen);
+
+path sha = box((linked_offset,0), (shared_offset,shared));
+fill(sha, royalblue);
+
+path intr = box((shared_offset,0), (intrusive_offset,intrusive));
+fill(intr, magenta);
+
+path uniq = box((intrusive_offset,0), (unique_offset,unique));
+fill(uniq, heavyred);
+
+real disp_eps = bench_width / 20.0;
+draw(
+    (arrow_offset, linked) 
+    -- (arrow_offset, linked + linked_disp) 
+    -- (arrow_offset + disp_eps, linked + linked_disp) 
+    -- (arrow_offset - disp_eps, linked + linked_disp) 
+    -- (arrow_offset, linked + linked_disp)
+    -- (arrow_offset, linked - linked_disp)
+    -- (arrow_offset + disp_eps, linked - linked_disp) 
+    -- (arrow_offset - disp_eps, linked - linked_disp) 
+    -- (arrow_offset, linked - linked_disp)
+, gray);
+draw(
+    (linked_offset, shared) 
+    -- (linked_offset, shared + shared_disp) 
+    -- (linked_offset + disp_eps, shared + shared_disp) 
+    -- (linked_offset - disp_eps, shared + shared_disp) 
+    -- (linked_offset, shared + shared_disp)
+    -- (linked_offset, shared - shared_disp)
+    -- (linked_offset + disp_eps, shared - shared_disp) 
+    -- (linked_offset - disp_eps, shared - shared_disp) 
+    -- (linked_offset, shared - shared_disp)
+, gray);
+draw(
+    (shared_offset, intrusive) 
+    -- (shared_offset, intrusive + intrusive_disp) 
+    -- (shared_offset + disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset, intrusive + intrusive_disp)
+    -- (shared_offset, intrusive - intrusive_disp)
+    -- (shared_offset + disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset, intrusive - intrusive_disp)
+, gray);
+draw(
+    (intrusive_offset, unique) 
+    -- (intrusive_offset, unique + unique_disp) 
+    -- (intrusive_offset + disp_eps, unique + unique_disp) 
+    -- (intrusive_offset - disp_eps, unique + unique_disp) 
+    -- (intrusive_offset, unique + unique_disp)
+    -- (intrusive_offset, unique - unique_disp)
+    -- (intrusive_offset + disp_eps, unique - unique_disp) 
+    -- (intrusive_offset - disp_eps, unique - unique_disp) 
+    -- (intrusive_offset, unique - unique_disp)
+, gray);
+
+real label_delta = 0.05 * max(max(linked, shared), max(intrusive, unique));
+label("linked\underline{\hspace{0.3cm}}ptr", (linked_offset - label_offset, linked + label_delta), black);
+label("std::shared\underline{\hspace{0.3cm}}ptr", (shared_offset - label_offset, shared + label_delta), black);
+label("boost::intruisive\underline{\hspace{0.3cm}}ptr", (intrusive_offset - label_offset, intrusive + label_delta), black);
+label("std::unique\underline{\hspace{0.3cm}}ptr", (unique_offset - label_offset, unique + label_delta), black);
+label("copy constructor benchmark : ", (bench_width * 2.0, max_height * 1.1));
+\end{asy}
+\end{minipage}
+
+\begin{minipage}[h]{0.4\linewidth}
+\begin{asy}
+real linked = 36;
+real shared = 5;
+real intrusive = 4;
+real unique = 4;
+real linked_disp = 0;
+real shared_disp = 0;
+real intrusive_disp = 0;
+real unique_disp = 0;real bench_width = 12.0;
+real max_height = 36;
+
+real arrow_offset = bench_width / 4.0 * 1.1;
+real point_offset = arrow_offset * 2 / 3;
+real linked_offset = arrow_offset + bench_width;
+real shared_offset = arrow_offset + 2 * bench_width;
+real intrusive_offset = arrow_offset + 3 * bench_width;
+real unique_offset = arrow_offset + 4 * bench_width;
+real label_offset = (shared_offset - linked_offset) / 2.0;
+
+size(20cm,0);
+draw((arrow_offset / 2, 0) -- (arrow_offset / 2, max_height),arrow=Arrow);
+
+label(
+    scale(0.5) * ("" + string(linked) + ""),
+    (point_offset, linked),
+    black
+);
+label(
+    scale(0.5) * ("" + string(shared) + ""),
+    (point_offset, shared),
+    black
+);
+label(
+    scale(0.5) * ("" + string(intrusive) + ""),
+    (point_offset, intrusive),
+    black
+);
+label(
+    scale(0.5) * ("" + string(unique) + ""),
+    (point_offset, unique),
+    black
+);
+path lin = box((arrow_offset,0), (linked_offset,linked));
+fill(lin, deepgreen);
+
+path sha = box((linked_offset,0), (shared_offset,shared));
+fill(sha, royalblue);
+
+path intr = box((shared_offset,0), (intrusive_offset,intrusive));
+fill(intr, magenta);
+
+path uniq = box((intrusive_offset,0), (unique_offset,unique));
+fill(uniq, heavyred);
+
+real disp_eps = bench_width / 20.0;
+draw(
+    (arrow_offset, linked) 
+    -- (arrow_offset, linked + linked_disp) 
+    -- (arrow_offset + disp_eps, linked + linked_disp) 
+    -- (arrow_offset - disp_eps, linked + linked_disp) 
+    -- (arrow_offset, linked + linked_disp)
+    -- (arrow_offset, linked - linked_disp)
+    -- (arrow_offset + disp_eps, linked - linked_disp) 
+    -- (arrow_offset - disp_eps, linked - linked_disp) 
+    -- (arrow_offset, linked - linked_disp)
+, gray);
+draw(
+    (linked_offset, shared) 
+    -- (linked_offset, shared + shared_disp) 
+    -- (linked_offset + disp_eps, shared + shared_disp) 
+    -- (linked_offset - disp_eps, shared + shared_disp) 
+    -- (linked_offset, shared + shared_disp)
+    -- (linked_offset, shared - shared_disp)
+    -- (linked_offset + disp_eps, shared - shared_disp) 
+    -- (linked_offset - disp_eps, shared - shared_disp) 
+    -- (linked_offset, shared - shared_disp)
+, gray);
+draw(
+    (shared_offset, intrusive) 
+    -- (shared_offset, intrusive + intrusive_disp) 
+    -- (shared_offset + disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset, intrusive + intrusive_disp)
+    -- (shared_offset, intrusive - intrusive_disp)
+    -- (shared_offset + disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset, intrusive - intrusive_disp)
+, gray);
+draw(
+    (intrusive_offset, unique) 
+    -- (intrusive_offset, unique + unique_disp)
+    -- (intrusive_offset + disp_eps, unique + unique_disp) 
+    -- (intrusive_offset - disp_eps, unique + unique_disp)
+    -- (intrusive_offset, unique + unique_disp)
+    -- (intrusive_offset, unique - unique_disp)
+    -- (intrusive_offset + disp_eps, unique - unique_disp) 
+    -- (intrusive_offset - disp_eps, unique - unique_disp) 
+    -- (intrusive_offset, unique - unique_disp)
+, gray);
+
+real label_delta = 0.05 * max(max(linked, shared), max(intrusive, unique));
+label("linked\underline{\hspace{0.3cm}}ptr", (linked_offset - label_offset, linked + label_delta), black);
+label("std::shared\underline{\hspace{0.3cm}}ptr", (shared_offset - label_offset, shared + label_delta), black);
+label("boost::intruisive\underline{\hspace{0.3cm}}ptr", (intrusive_offset - label_offset, intrusive + label_delta), black);
+label("std::unique\underline{\hspace{0.3cm}}ptr", (unique_offset - label_offset, unique + label_delta), black);
+label("std::move benchmark : ", (bench_width * 2.0, max_height * 1.1));
+\end{asy}
+\end{minipage}
+
+\begin{minipage}[h]{0.4\linewidth}
+\begin{asy}
+real linked = 1187;
+real shared = 3527;
+real intrusive = 996;
+real unique = 786;
+real linked_disp = 5;
+real shared_disp = 51;
+real intrusive_disp = 18;
+real unique_disp = 12;real bench_width = 1624.0;
+real max_height = 3527;
+
+real arrow_offset = bench_width / 4.0 * 1.1;
+real point_offset = arrow_offset * 2 / 3;
+real linked_offset = arrow_offset + bench_width;
+real shared_offset = arrow_offset + 2 * bench_width;
+real intrusive_offset = arrow_offset + 3 * bench_width;
+real unique_offset = arrow_offset + 4 * bench_width;
+real label_offset = (shared_offset - linked_offset) / 2.0;
+
+size(20cm,0);
+draw((arrow_offset / 2, 0) -- (arrow_offset / 2, max_height),arrow=Arrow);
+
+label(
+    scale(0.5) * ("" + string(linked) + ""),
+    (point_offset, linked),
+    gray
+);
+label(
+    scale(0.5) * ("" + string(shared) + ""),
+    (point_offset, shared),
+    gray
+);
+label(
+    scale(0.5) * ("" + string(intrusive) + ""),
+    (point_offset, intrusive),
+    gray
+);
+label(
+    scale(0.5) * ("" + string(unique) + ""),
+    (point_offset, unique),
+    gray
+);
+path lin = box((arrow_offset,0), (linked_offset,linked));
+fill(lin, deepgreen);
+
+path sha = box((linked_offset,0), (shared_offset,shared));
+fill(sha, royalblue);
+
+path intr = box((shared_offset,0), (intrusive_offset,intrusive));
+fill(intr, magenta);
+
+path uniq = box((intrusive_offset,0), (unique_offset,unique));
+fill(uniq, heavyred);
+
+real disp_eps = bench_width / 20.0;
+draw(
+    (arrow_offset, linked) 
+    -- (arrow_offset, linked + linked_disp) 
+    -- (arrow_offset + disp_eps, linked + linked_disp) 
+    -- (arrow_offset - disp_eps, linked + linked_disp) 
+    -- (arrow_offset, linked + linked_disp)
+    -- (arrow_offset, linked - linked_disp)
+    -- (arrow_offset + disp_eps, linked - linked_disp) 
+    -- (arrow_offset - disp_eps, linked - linked_disp) 
+    -- (arrow_offset, linked - linked_disp)
+, gray);
+draw(
+    (linked_offset, shared) 
+    -- (linked_offset, shared + shared_disp) 
+    -- (linked_offset + disp_eps, shared + shared_disp) 
+    -- (linked_offset - disp_eps, shared + shared_disp) 
+    -- (linked_offset, shared + shared_disp)
+    -- (linked_offset, shared - shared_disp)
+    -- (linked_offset + disp_eps, shared - shared_disp) 
+    -- (linked_offset - disp_eps, shared - shared_disp) 
+    -- (linked_offset, shared - shared_disp)
+, gray);
+draw(
+    (shared_offset, intrusive) 
+    -- (shared_offset, intrusive + intrusive_disp) 
+    -- (shared_offset + disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive + intrusive_disp) 
+    -- (shared_offset, intrusive + intrusive_disp)
+    -- (shared_offset, intrusive - intrusive_disp)
+    -- (shared_offset + disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset - disp_eps, intrusive - intrusive_disp) 
+    -- (shared_offset, intrusive - intrusive_disp)
+, gray);
+draw(
+    (intrusive_offset, unique) 
+    -- (intrusive_offset, unique + unique_disp) 
+    -- (intrusive_offset + disp_eps, unique + unique_disp) 
+    -- (intrusive_offset - disp_eps, unique + unique_disp) 
+    -- (intrusive_offset, unique + unique_disp)
+    -- (intrusive_offset, unique - unique_disp)
+    -- (intrusive_offset + disp_eps, unique - unique_disp) 
+    -- (intrusive_offset - disp_eps, unique - unique_disp) 
+    -- (intrusive_offset, unique - unique_disp)
+, gray);
+
+real label_delta = 0.03 * max(max(linked, shared), max(intrusive, unique));
+label("linked\underline{\hspace{0.3cm}}ptr", (linked_offset - label_offset, linked + label_delta));
+label("std::shared\underline{\hspace{0.3cm}}ptr", (shared_offset - label_offset, shared + label_delta));
+label("boost::intruisive\underline{\hspace{0.3cm}}ptr", (intrusive_offset - label_offset, intrusive + label_delta));
+label("std::unique\underline{\hspace{0.3cm}}ptr", (unique_offset - label_offset, unique + label_delta));
+label("real usecase (decart treee) benchmark : ", (bench_width * 2.0, max_height * 1.1));
+\end{asy}
+\end{minipage}
+
+% \begin{figure}[h!]
+%  \begin{minipage}[h]{0.4\linewidth}{1.0\textwidth}
+%   \centering
+%   \includegraphics{alloc}
+%      \label{fig:sub:subfigure1}
+%  \end{minipage}
+%  \caption{\textsl{Figure text.}}
+%  \label{fig:whole_figure}
+%  \end{figure}

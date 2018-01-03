@@ -7,6 +7,7 @@ define clean_main_file
 	rm -f	${MAIN_FILE_BASE}.aux $(MAIN_FILE_DEPS:%.tex=%.aux)
 	rm -f	${MAIN_FILE_BASE}.log ${MAIN_FILE_BASE}.out
 	rm -f	${MAIN_FILE_BASE}.pdf ${MAIN_FILE_BASE}.toc
+	rm -f	${MAIN_FILE_BASE}-*.{asy,pdf,pre,tex}
 	rm -rf	_minted-${MAIN_FILE_BASE}
 endef
 
@@ -23,6 +24,7 @@ all: ${MAIN_FILE_BASE}.pdf ${HOW_TO_BASE}.pdf
 ${MAIN_FILE_BASE}.pdf: ${MAIN_FILE_BASE}.tex ${MAIN_FILE_DEPS}
 	$(call clean_main_file)
 	${TEX_CMD} --interaction=nonstopmode --halt-on-error --shell-escape ${MAIN_FILE_BASE}.tex
+	find -name '${MAIN_FILE_BASE}-*.asy' -print0 | xargs -0 asy
 	${TEX_CMD} --interaction=nonstopmode --halt-on-error --shell-escape ${MAIN_FILE_BASE}.tex
 
 ${HOW_TO_BASE}.pdf: ${HOW_TO_BASE}.tex
