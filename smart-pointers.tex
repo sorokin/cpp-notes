@@ -166,6 +166,24 @@ unique_ptr(unique_ptr&& other) noexcept
 {}
 \end{minted}
 
+\subsubsection{Неявные приведения}
+
+Обычные указатели можно неявно приводить. Например если \mintinline{c++}{B} является некоторым классом, а \mintinline{c++}{D} является производным от него, то разрешено неявное приведение \mintinline{c++}{D*} в \mintinline{c++}{B*}. \mintinline{c++}{unique_ptr} поддерживает аналогичное приведение. \mintinline{c++}{unique_ptr} использует SFINAE-проверку, чтобы разрешить приведение \mintinline{c++}{unique_ptr<D>} в \mintinline{c++}{unique_ptr<B>} тогда и только тогда, когда разрешено приведение \mintinline{c++}{D*} в \mintinline{c++}{B*}.
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template <typename T>
+struct unique_ptr
+{
+    template <typename U,
+              typename = typename std::enable_if_t<is_convertible_v<U*, T*>>>
+    unique_ptr(unique_ptr<U>&& other);
+};
+\end{minted}
+
 \subsubsection{Настраиваемый deleter}
 
 В некоторых случаях для освобождения памяти необходимо использовать не \mintinline{c++}{delete}, а другие операции. Например если память была выделена с помощью функции \mintinline{c++}{malloc} её следует освобождать функцией \mintinline{c++}{free}, а если с помощью оператора \mintinline{c++}{new[]} для массивов, то оператором \mintinline{c++}{delete[]} для массивов. Существуют и другие способы освобождения ресурсов, поэтому в некоторых случаях может потребоваться исполнение какого-то произвольного кода в деструкторе \mintinline{c++}{unique_ptr}. \mintinline{c++}{unique_ptr} поддерживает такое использование.
