@@ -393,7 +393,7 @@ void f(T&& a)
 	\end{tabular}
 	
 	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
-		\mintinline{c++}{a} - lvalue типа \mintinline{c++}{int}, поэтому \mintinline{c++}{T} выводится в \mintinline{c++}{int&}, тогда после подстановки, до применения reference collapsing \mintinline{c++}{f} выглядит так: & 42 - rvalue типа \mintinline{c++}{int}, следовательно \mintinline{c++}{Т} выводится в \mintinline{c++}{int}, а после подстановки \mintinline{c++}{f} выглядит так:\\
+		\mintinline{c++}{a} - lvalue типа \mintinline{c++}{int}, поэтому \mintinline{c++}{T} выводится в \mintinline{c++}{int&}, тогда после подстановки, до применения reference collapsing \mintinline{c++}{f} выглядит так: & 42 - rvalue типа \mintinline{c++}{int}, следовательно \mintinline{c++}{T} выводится в \mintinline{c++}{int}, а после подстановки \mintinline{c++}{f} выглядит так:\\
 	\end{tabular}
 	
 	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
