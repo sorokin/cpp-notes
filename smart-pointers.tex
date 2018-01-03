@@ -167,6 +167,7 @@ unique_ptr(unique_ptr&& other) noexcept
 \end{minted}
 
 \subsubsection{Неявные приведения}
+\label{unique_ptr_implicit_conversions}
 
 Обычные указатели можно неявно приводить. Например если \mintinline{c++}{B} является некоторым классом, а \mintinline{c++}{D} является производным от него, то разрешено неявное приведение \mintinline{c++}{D*} в \mintinline{c++}{B*}. \mintinline{c++}{unique_ptr} поддерживает аналогичное приведение. \mintinline{c++}{unique_ptr} использует SFINAE-проверку, чтобы разрешить приведение \mintinline{c++}{unique_ptr<D>} в \mintinline{c++}{unique_ptr<B>} тогда и только тогда, когда разрешено приведение \mintinline{c++}{D*} в \mintinline{c++}{B*}.
 
@@ -224,9 +225,15 @@ private:
 В реальности \mintinline{c++}{std::unique_ptr} устроен гораздо сложнее, чем показано на листинге \ref{listing:unique_ptr_with_deleter}. Это обусловлено следующими причинами:
 
 \begin{itemize}
-    \item Шаблонный параметр \mintinline{c++}{D} может быть не типом deleter'а, а ссылой на deleter. Поэтому при обращении \mintinline{c++}{D::pointer}, предварительно следует снять ссылку с \mintinline{c++}{D}.
+    \item Шаблонный параметр \mintinline{c++}{D} может быть не самим типом deleter'а, а ссылой на deleter. Поэтому при обращении \mintinline{c++}{D::pointer}, предварительно следует снять ссылку с \mintinline{c++}{D}.
     \item Deleter не обязан содержать typedef \mintinline{c++}{pointer}. Если он отсутствует, \mintinline{c++}{unique_ptr} должен использовать \mintinline{c++}{T*} вместо него. Это требует от \mintinline{c++}{unique_ptr} использования SFINAE-проверки.
     \item Часто deleter является пустым объектом. Чтобы не увеличивать размер \mintinline{c++}{unique_ptr} при реализации используется empty-base оптимизация.
+\end{itemize}
+
+При перемещении \mintinline{c++}{unique_ptr}, перемещается и его deleter. Отдельно следует рассмотреть, что происходит с deleter'ами при неявных приведениях \mintinline{c++}{unique_ptr} рассмотренных в разделе \ref{unique_ptr_implicit_conversions}. Важным является тот факт, что результирующий \mintinline{c++}{unique_ptr} и исходный могут иметь deleter'ы разных типов. При использовании deleter'ов, конверсия из \mintinline{c++}{unique_ptr<T1, D1>} разрешена в \mintinline{c++}{unique_ptr<T2, D2>} если выполнено одно из двух условий:
+\begin{itemize}
+    \item \mintinline{c++}{D2} является ссылкой и \mintinline{c++}{D1} совпадает с \mintinline{c++}{D2}.
+    \item \mintinline{c++}{D2} не является ссылкой и \mintinline{c++}{D1} приводим в \mintinline{c++}{D2}.
 \end{itemize}
 
 \subsection{Владение}
