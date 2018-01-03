@@ -236,6 +236,34 @@ private:
     \item \mintinline{c++}{D2} не является ссылкой и \mintinline{c++}{D1} приводим в \mintinline{c++}{D2}.
 \end{itemize}
 
+\subsubsection{unique\_ptr для массивов}
+
+\mintinline{c++}{unique_ptr} имеет отдельную специализацию для массивов:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template <typename T, typename D = default_delete<T>>
+struct unique_ptr;
+
+template <typename E, typename D>
+struct unique_ptr<E[], D>
+{
+    E& operator[](size_t index) const;
+};
+\end{minted}
+
+\mintinline{c++}{unique_ptr} для массивов отличается от обычного \mintinline{c++}{unique_ptr} следующими свойствами:
+\begin{itemize}
+    \item \mintinline{c++}{unique_ptr} для массивов имеет \mintinline{c++}{operator[]}. Обычный \mintinline{c++}{unique_ptr} не имеет \mintinline{c++}{operator[]}.
+    \item \mintinline{c++}{unique_ptr} для массивов хранит внутри себя \mintinline{c++}{E*}, а не \mintinline{c++}{T*}.
+    \item \mintinline{c++}{unique_ptr} для массивов использует более жесткие правила для неявных преобразований. Обычные указатели можно приводить по иерархии наследования. Но указатель на массив элементов типа \mintinline{c++}{D} не приводим в указатель на массив элементов типа \mintinline{c++}{B}, даже если \mintinline{c++}{D} --- это тип производный от \mintinline{c++}{B}, поскольку \mintinline{c++}{B} и \mintinline{c++}{D} могут иметь разных размер, а в массиве элементы расположены подряд.
+\end{itemize}
+
+Как и \mintinline{c++}{unique_ptr}, \mintinline{c++}{default_delete} имеет специализацию для массивов, которая делает \mintinline{c++}{delete[]} вместо обычного \mintinline{c++}{delete}.
+
 \subsection{Владение}
 Ответственность за удаление объекта называется владением. Например, unique\_ptr ответственен за удаление объекта на который он ссылается, соответственно говорят, что unique\_ptr владеет объектом, на который он ссылается. Про функцию \mintinline{c++}{reset(p)} говорят, что она передает владение объектом unique\_ptr'у, а функция \mintinline{c++}{release()}, наоборот, забирает владение объектом у unique\_ptr'а.
 
