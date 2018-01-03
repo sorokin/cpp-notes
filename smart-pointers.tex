@@ -166,137 +166,322 @@ unique_ptr(unique_ptr&& other) noexcept
 В некоторых случаях объект может иметь несколько владельцев. Это называется разделяемым владением и работает следующим образом: пока существует хотя бы один владелец объект продолжает жить, когда пропадает последний владелец --- объект удаляется. Для умных указателей существует два способа реализации разделяемого владения: подсчет ссылок и провязка всех владельцев в двусвязный список. Оба подхода имеют свои преимущества и недостатки. Подсчет ссылок применяется во включенном в стандартную библиотеку указателе \mintinline{c++}{std::shared_ptr}. Указатель использующий провязку владельцев в двусвязный список в стандартной библиотеке отсутствует, но часто называется \mintinline{c++}{linked_ptr}.
 
 \subsection{\mintinline{c++}{std::shared_ptr}}
-\mintinline{c++}{std::shared_ptr} --- это умный указатель, с разделяемым владением объектов через его указатель. Несколько указателей могут владеть одним объектом. Объект будет уничтожен, когда последний \mintinline{c++}{shared_ptr} будет уничтожен или сброшен.
+\mintinline{c++}{std::shared_ptr} --- это умный указатель, с разделяемым владением. \mintinline{c++}{std::shared_ptr} умеет создаваться от обычного указателя и копироваться.
 
-\textcolor{red}{NB}) \mintinline{c++}{shared_ptr} может не указывать ни на какой объект.
-
-\subsubsection{Наивная реализация.}
-
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-template <typename T, typename D>
-struct shared_ptr {
-    T* obj; // указатель на объект управления
-    size_t* counter; // счетчик ссылок, обнуление которого влечет удаление объекта
-    D *deleter; // функция, которая удаляет объект
-    shared_ptr(*T, D const& deleter);
-}
-
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template<class T>
+class shared_ptr
+{
+    // создаёт shared_ptr не ссылающийся ни на один объект
+    shared_ptr();
+    // создаёт shared_ptr ссылающийся на *ptr либо, если ptr == nullptr, не ссылающийся ни на один объект
+    explicit shared_ptr(T* ptr);
+    // создает shared_ptr ссылающийся на тот же объект, что и other
+    shared_ptr(shared_ptr const& other);
+    // изменяет shared_ptr так, чтобы он ссылался на тот же объект, что и rhs
+    shared_ptr& operator=(shared_ptr const& rhs);
+};
 \end{minted}
 
+Несколько \mintinline{c++}{shared_ptr}'ов могут ссылаться на один объект. Объект, однажды обернутый в \mintinline{c++}{shared_ptr}, будет удален в тот момент, когда не останется \mintinline{c++}{shared_ptr}'ов ссылающихся на него.
 
+Как и \mintinline{c++}{unique_ptr} \mintinline{c++}{shared_ptr} поддерживает операции \mintinline{c++}{operator*}, \mintinline{c++}{operator->}, \mintinline{c++}{reset}, \mintinline{c++}{get} с той же семантикой, что и у \mintinline{c++}{unique_ptr}. Операция \mintinline{c++}{release} отсутствует для \mintinline{c++}{shared_ptr}'а поскольку в общем случае она не возможна, из-за того, что могут существовать другие \mintinline{c++}{shared_ptr}'ы ссылающиеся на этот же объект.
 
-\textcolor{red}{NB}) \textbf{Зачем делитер, если можно всегда вызвать деструктор объекта?} Ответ: Ингда мы хотим реализовать следующую схему пользования объектом: 1) мы берем объект из ресурса. 2) пользуемся им. 3) Потом возвращаем его от куда взяли, когда он стал нам не нужен.
+\subsubsection{Наивная реализация}
 
-\subsubsection{Оптимизация по памяти.}
-На самом деле все немного сложнее: нам может понядобиться хранить в нашем smart\_ptr аллокатор, счетчик weak\_ptr (об этом позднее), указалеть на объект управления. Поэтому имеет смысл хранить все это в одном объекте, для оптимизации выделения памяти под smart\_ptr. С учетом выше указанного:
+При наивной реализации \mintinline{c++}{shared_ptr} мог бы хранить указатель на ссылаемый объект и счетчик ссылок. Поскольку значение счетчика ссылок является общим между всеми \mintinline{c++}{shared_ptr} ссылающимися на данный объект, \mintinline{c++}{shared_ptr} вынужден хранить указатель на счетчик ссылок и аллоцировать память под счетчик ссылок динамически.
 
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-template <typename T, typename D>
-struct shared_ptr {
-    T* obj; // указатель на объект управления
-    struct control_block {
-        size_t* counter; // счетчик ссылок, обнуление которого влечет удаление объекта
-        D *deleter; // функция, которая удаляет объект
-    }* con_bl;
-    shared_ptr(*T, D const& deleter);
+template <typename T>
+struct shared_ptr
+{
+    // ...
+
+private:
+    // Класс имеет следующий инвариант:
+    // Если shared_ptr не ссылается ни на один объект, и ptr и ref_counter равны nullptr.
+    // Если shared_ptr ссылается на некоторый объект, и ptr и ref_counter не равны nullptr.
+    // *ref_counter равен числу shared_ptr'ов ссылающихся на объект *ptr.
+    T* ptr;
+    size_t* ref_counter;
 };
 
-\end{minted}
+template <typename T>
+shared_ptr<T>::shared_ptr()
+    : ptr(nullptr)
+    , ref_counter(nullptr)
+{}
 
+template <typename T>
+shared_ptr<T>::shared_ptr(T* ptr)
+    : ptr(ptr)
+{
+    if (!ptr)
+        return;
 
-\textcolor{red}{NB}) если создавать \mintinline{c++}{std::shared_ptr} с помощью конструктора, то память будет распределяться как выше указанно, но если создать \mintinline{c++}{std::shared_ptr} с помошью \mintinline{c++}{std::make_shared(new T)}\footnote{создает объект и оборачивает его в \mintinline{c++}{std::shared_ptr}}, то память выделится только один раз, и объект будет лежать рядом с блоком управления. Поэтому лучше использовать последний способ где это возможно, чтобы снизить оверхед от "умности"\ указателя.
-
-\subsubsection{Специальный конструтор.}
-Иногда мы хотим продлевать объекту жизнь, если что-то ссылается на его поля. Для этого существует специальный конструтор:
-
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-struct car {
-    Wheel wheel[4];
-}
-// У нас есть машина с колесами. Мы хотим, чтобы пока мы умеет живой указатель на колесо, машина тоже не удалялась вместе с колесами.
-/* ... */
-shared_ptr<car> p;
-shared_ptr<wheel> q(&p, wheel[2]); // мы переиспользуем p.counter для q.
-
-\end{minted}
-Для этого наверно, будет полезно иметь ссылку на объект в блоке управления.\footnote{Мнение автора.}
-
-
-\textcolor{red}{NB}) Еще одно применение этой фичи: мы хотим хранить дерево по \mintinline{c++}{std::shared_ptr}, чтобы когда мы удалили корень, дерево само удалиться. Тогда с помощью этого, конструктора можно гарантировать, что если есть указатель на вершины дерева, то можно гарантировать, что по нему можно пробежаться.
-
-\subsubsection{Заметки по использованию.}
-\begin{enumerate}
-    \item
-    Возможно глупый пример, но все же.
-    \begin{minted}[
-    linenos,
-    frame=lines,
-    framesep=2mm,
-    tabsize = 4,
-    breaklines]
-    {c++}
-
-    int *silly_ptr = new int(5);
-    shared_ptr<int> a1(silly_ptr);
-    shared_ptr<int> b1(silly_ptr);
-    // b1.counter = a1.counter = 1;
-    // разные управляющие блоки
-    shared_ptr<int> a2(silly_ptr);
-    shared_ptr<int> b2(a2);
-    // b2.counter = a2.counter = 2;
-    // одинаковые
-
-    \end{minted}
-
-
-\end{enumerate}
-\subsubsection{Weak\_ptr}
-\mintinline{c++}{std::weak_ptr} --- умный указатель, который моделирует временное владение объектом.
-
-
-Ситуация: мы хотим хешировать картинки, которые хранять по \mintinline{c++}{std::shared_ptr}. То есть нам нужен мэп: name\_image $\to$ \mintinline{c++}{std::shared_ptr}. Но есть проблема, что если мы будем хранить в мэпе \mintinline{c++}{std::shared_ptr}, то они будут считать владельцами этих картинок, и они никогда не будут удаляться (если только их не удалить руками). В этой ситуации может помочь \mintinline{c++}{std::weak_ptr}.
-
-
-Дело в том, что weak\_ptr содержит "слабую"\ ссылку на объект, управляемый указателем \mintinline{c++}{std::shared_ptr}. Для этого и нужен счетчик "слабых" сслылок в блоке управления \mintinline{c++}{std::shared_ptr}. Теперь блок управления считает еще и слабые сслыки и когда удаляется управляемый объект, блок управления остается жить, пока на него ссылается хотя бы один weak\_ptr, чтобы сообщать им о существовании объекта. Например с помощью метода \mintinline[breaklines]{c++}{std::weak_ptr::expired() // проверяет удален ли объект.}
-
-
-То есть все, что должен хранить внутри себя weak\_ptr --- это указатель блок управления.
-
-
-Теперь вернемся к нашей задаче: мы сделаем мэп: name\_image $\to$ weak\_ptr.
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-map<string, weak_ptr<image>> cache;
-shared_ptr<image> load_image(string const& name) {
-    auto i = cache.find(name);
-    if (i != cache.end()) {
-        shared_ptr<image> temp = i->second.lock(); // создаем shared_ptr, который управляет объектом, которым управляет i. Если объект удален temp будет пустой.
-        if (temp) {// проверка на то, что temp не пуст
-            return temp;
-        }
+    try
+    {
+        ref_counter = new size_t(1);
     }
-    // если картинки нет в кэше загружаем ее.
-    shared_ptr<image> temp = real_load(name);
-    cache[name] = temp; // переобразование weak_ptr(shared_ptr);
-    return temp;
+    catch (...)
+    {
+        delete ptr;
+        throw;
+    }
 }
 
+template <typename T>
+shared_ptr<T>::shared_ptr(shared_ptr const& other)
+    : ptr(other.ptr)
+    , ref_counter(other.ref_counter)
+{
+    if (!ptr)
+        return;
+
+    ++*ref_counter;
+}    
+
+template <typename T>
+shared_ptr<T>::~shared_ptr()
+{
+    if (!ptr)
+        return;
+
+    if (--*ref_counter == 0)
+    {
+        delete ref_counter;
+        delete ptr;
+    }
+}
 \end{minted}
 
+Нетривиальным моментом в реализации является конструктор \mintinline{c++}{shared_ptr(T* ptr)} и блок \mintinline{c++}{try...catch} внутри него. На первый взгляд может показаться, что этот блок не требуется и даже мешает, поскольку из-за него конструктор перестает удовлетворять строгой гарантии безопасности исключений. Однако существует веский аргумент в пользу такой релизации. Рассмотрим следующее использование \mintinline{c++}{shared_ptr}:
 
-\textcolor{red}{NB}) Преобразования между \mintinline{c++}{std::shared_ptr} и weak\_ptr --- это нормально. Только с его помощью можно обратиться к объекту weak\_ptr, не определяя новых указателей.
+\begin{listing}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+shared_ptr<T> p(new T());
+\end{minted}
+\caption{Типичное создание \mintinline{c++}{shared_ptr}}
+\label{listing:shared_ptr_attach_to_object}
+\end{listing}
 
+Если конструктор \mintinline{c++}{shared_ptr} при ошибке аллокации счетчика ссылок не будет удалять переданный указатель, то этот указатель нигде не будет удалён и любой код аналогичный листингу \ref{listing:shared_ptr_attach_to_object} был бы ошибочным. Поэтому конструктор \mintinline{c++}{shared_ptr} от указателя удаляет объект, если происходит ошибка аллокации счетчика ссылок. Можно сказать что конструктор \mintinline{c++}{shared_ptr} забирает владение указателем даже если он бросает исключение.
 
-\textcolor{red}{NB}) С помощью weak\_ptr можно решать циклические зависимости \mintinline{c++}{std::shared_ptr}. Суть проблемы в том, что объекты не могут удалиться, так как ссылаются друг на друга.
-
-\subsection{split умных указателей}
+\subsubsection{Проблема разделения счетчика ссылок}
 
 Расмотрим следующий код:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-SomeClass p = new SomeClass();
-shared_ptr<SomeClass> p1(p);
-shared_ptr<SomeClass> p2(p);
+T* p = new T();
+std::shared_ptr<T> p1(p);
+std::shared_ptr<T> p2(p);
 \end{minted}
-Этот код --- некорректный, т.к. оба умных указателя указывают на один и тот же объект p, но при вызове конструктора от p каждый из умных указателей создаст свой счетчик ссылок, проинициализировав его значением 1. При выходе из области видимости каждый из созданных умных указателей попытается удалить объект p, продекрементировав свой счетчик ссылок. В обоих случаях он станет равным нулю, после чего будет дважды вызван деструктор на объекте p. Описанная ситуация называется разделением (split) умных указателей.
+Данный код содержит ошибку. Каждый из вызовов \mintinline{c++}{shared_ptr(T*)} создаст свой собственный счетчик ссылок. В результате получится один объект и два счетчика ссылок к нему. Объект удалится, когда хотя бы один из счетчиков ссылок достигнет нуля. Когда второй из счетчиков достигнет нуля произойдет ошибка повторного удаления. Описанная ситуация называется разделением ({\it split}) счетчика ссылок. Разделение счетчика ссылок является ошибкой и не должно возникать в корректных программах.
+
+\subsubsection{Настраиваемый deleter}
+
+Аналогично \mintinline{c++}{unique_ptr} \mintinline{c++}{shared_ptr} позволяет настроить как именно удалять объект, когда не осталось \mintinline{c++}{shared_ptr}'ов ссылающихся на него. В отличие от \mintinline{c++}{unique_ptr} тип \mintinline{c++}{shared_ptr} не зависит от типа deleter'а.
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct shared_ptr
+{
+    template <typename D>
+    shared_ptr(T*, D const& deleter);
+};
+\end{minted}
+
+Deleter, как и счетчик ссылок, является общим для всех \mintinline{c++}{shared_ptr} ссылающихся на некоторый объект, поэтому хранится в том же блоке памяти, что и счетчик ссылок:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct shared_ptr
+{
+private:
+    struct shared_count_base
+    {
+        size_t nrefs;
+    };
+    
+    template <typename D>
+    struct shared_count : shared_count_base
+    {
+        D deleter;
+    };
+    
+    T* ptr;
+    shared_count* ref_counter;
+};
+\end{minted}
+
+\subsubsection{Aliasing конструктор}
+
+Иногда необходимо продлевать жизнь объекту, пока кто-то ссылается на его поля. Для этого существует специальный конструтор, называемый {\it aliasing конструктор}:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct shared_ptr
+{
+    // Создаёт shared_ptr ссылающийся на ptr и использующий shared_count от sp.
+    template <typename U>
+    shared_ptr(shared_ptr<U> const& sp, T* ptr); 
+};
+\end{minted}
+
+Рассмотрим использование aliasing конструктора на примере. Пусть у нас есть машина. Машина имеет колёса. Мы хотим, чтобы пока существует указатель на колесо, машина тоже не удалялась вместе с колёсами. Это можно записать следующим образом:
+
+\begin{listing}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct car
+{
+    wheel wheels[4];
+};
+
+shared_ptr<car> c;
+shared_ptr<wheel> w(c, &c->wheels[2]); // w получает тот же shared_count, что и c
+\end{minted}
+\caption{Пример использования aliasing конструктора}
+\label{listing:shared_ptr_aliasing_ctor_example}
+\end{listing}
+
+Сравним такое использование со случаем когда \mintinline{c++}{car}, содержит \mintinline{c++}{shared_ptr}'ы на \mintinline{c++}{wheel}'ы:
+
+\begin{listing}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct car
+{
+    shared_ptr<wheel> wheels[4];
+};
+
+shared_ptr<car> c;
+shared_ptr<wheel> w(c->wheels[2]);
+\end{minted}
+\caption{Пример с автомобилем и колёсами без использования aliasing конструктора}
+\label{listing:shared_ptr_car_wheels_example}
+\end{listing}
+
+Примеры \ref{listing:shared_ptr_aliasing_ctor_example} и \ref{listing:shared_ptr_car_wheels_example} имеют два отличия:
+\begin{enumerate}
+\item В примере \ref{listing:shared_ptr_aliasing_ctor_example} имеется один объект в памяти и один счетчик ссылок. В примере \ref{listing:shared_ptr_car_wheels_example} имеется пять объектов в памяти, каждый из которых имеет свой счетчик ссылок.
+\item В примере \ref{listing:shared_ptr_aliasing_ctor_example} колёса не могут существовать без автомобиля, когда умирает автомобиль удаляются все колеса. Удерживание ссылки на колесо продлевает жизнь автомобилю. В примере \ref{listing:shared_ptr_car_wheels_example} автомобиль может умереть, а колеса будут продолжать жить сами по себе.
+\end{enumerate}
+
+Для того, чтобы поддержать aliasing конструкторы в \mintinline{c++}{shared_count}'е требуется похранить ссылку на исходный объект:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct shared_ptr
+{
+private:
+    struct shared_count_base
+    {
+        size_t nrefs;
+    };
+    
+    template <typename D>
+    struct shared_count : shared_count_base
+    {
+        T* ptr;
+        D deleter;
+    };
+    
+    T* ptr;
+    shared_count* ref_counter;
+};
+\end{minted}
+
+Ещё одним применением aliasing конструкторов является следующее. При хранении дерева объектов они позволяют, гарантировать, что пока существует хоть один указатель на элемент дерева, то всё дерево продолжает существовать.
+
+\subsubsection{\mintinline{c++}{std::weak_ptr}}
+
+Рассмотрим следующую задачу. Пусть у нас есть функция \mintinline{c++}{image load_image(string name)} загружающая картинку по имени. И пусть так оказалось, что часто пользователи этой функции загружают одну и ту же картинку несколько раз и держать в памяти несколько копий одной картинки. Требуется сделать компонент, который если изображение уже загружено, не будет загружать его второй раз, а будет переиспользовать существующее. Освобождаться изображение должно только тогда, когда последний пользователь закончил с ним работать.
+
+Чтобы изображение удалялось только тогда, когда последний пользователь закончил с ним работать изменим пользователей, чтобы они хранили не сам \mintinline{c++}{image}, а \mintinline{c++}{shared_ptr<image>}. Для того, чтобы \mintinline{c++}{load_image} возвращала \mintinline{c++}{shared_ptr} на уже существующий \mintinline{c++}{image} если такой существует можно было бы попробовать использовать мапу:
+
+\begin{listing}
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct image_cache
+{
+    image_cache(image_cache const&) = delete;
+    image_cache& operator=(image_cache const&) = delete;
+
+    std::shared_ptr<image> load_image(std::string const& name)
+    {
+        auto i = cache.find(name);
+        if (i != cache.end())
+            return i->second;
+            
+        std::shared_ptr<image> p = real_load_image(name);
+        cache.insert(i, {name, p});
+        return p;
+    }
+
+private:
+    std::map<std::string, std::shared_ptr<image> > cache;
+};
+\end{minted}
+\caption{Пример (некорректный) кеша изображений}
+\label{listing:shared_ptr_image_cache_broken}
+\end{listing}
+
+Однако использование \mintinline{c++}{shared_ptr<image>} в кеше приводит к проблеме. \mintinline{c++}{shared_ptr} мешает \mintinline{c++}{image}'ам удаляться, поскольку на все \mintinline{c++}{image}'ы как минимум держатся ссылки из кеша. В результате все загруженные изображения будут удерживаться, пока живет \mintinline{c++}{image_cache}.
+
+Для решения этой задачи требуется класс который позволяет ссылаться на \mintinline{c++}{image}, но не удерживать ссылку на него. Таким классом является \mintinline{c++}{std::weak_ptr}. \mintinline{c++}{weak_ptr} используется совместно с \mintinline{c++}{shared_ptr} и позволяет ссылаться на объект не препятствуя его удалению.
+
+\mintinline{c++}{weak_ptr} имеет следующие операции:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct weak_ptr
+{
+    // создает weak_ptr не ссылающийся ни на один объект
+    weak_ptr();
+    // создает weak_ptr ссылающийся на тот же объект, что и sp
+    weak_ptr(shared_ptr<T> const& sp);
+
+    weak_ptr(weak_ptr const& other);
+    weak_ptr& operator=(weak_ptr const& other);
+
+    // Возвращает нулевой shared_ptr, если объект был удалён
+    // Возвращает ненулевой shared_ptr, если объект ещё не был удален
+    shared_ptr<T> lock() const;
+};
+\end{minted}
+
+\mintinline{c++}{weak_ptr} не имеет операции разыменования.
+
+С использованием \mintinline{c++}{weak_ptr} пример \ref{listing:shared_ptr_image_cache_broken} можно переписать следующим образом:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct image_cache
+{
+    image_cache(image_cache const&) = delete;
+    image_cache& operator=(image_cache const&) = delete;
+
+    std::shared_ptr<image> load_image(std::string const& name)
+    {
+        auto i = cache.find(name);
+        if (i != cache.end())
+        {
+            std::shared_ptr<image> p = i->second.lock();
+            if (p)
+                return p;
+        }
+            
+        std::shared_ptr<image> p = real_load_image(name);
+        cache[name] = p;
+        return p;
+    }
+
+private:
+    std::map<std::string, std::weak_ptr<image> > cache;
+};
+\end{minted}
+
+Для поддержки \mintinline{c++}{weak_ptr}, \mintinline{c++}{shared_count} содержит два счетчика ссылок: один для обычных (сильных) ссылок и один для слабых ссылок. Достижение счетчика сильных нуля влечет удаление управляемого объекта, достичение обоих счетчиков нуля влечет удаление \mintinline{c++}{shared_count}'а.
 
 \subsection{Сast\_pointer}
 Рассмотрим пример кода:
