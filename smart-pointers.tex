@@ -166,6 +166,51 @@ unique_ptr(unique_ptr&& other) noexcept
 {}
 \end{minted}
 
+\subsubsection{Настраиваемый deleter}
+
+В некоторых случаях для освобождения памяти необходимо использовать не \mintinline{c++}{delete}, а другие операции. Например если память была выделена с помощью функции \mintinline{c++}{malloc} её следует освобождать функцией \mintinline{c++}{free}, а если с помощью оператора \mintinline{c++}{new[]} для массивов, то оператором \mintinline{c++}{delete[]} для массивов. Существуют и другие способы освобождения ресурсов, поэтому в некоторых случаях может потребоваться исполнение какого-то произвольного кода в деструкторе \mintinline{c++}{unique_ptr}. \mintinline{c++}{unique_ptr} поддерживает такое использование.
+
+Для того, чтобы указать, что именно делать в деструкторе, \mintinline{c++}{std::unique_ptr} получает специальный объект называемый {\bf deleter}. Сильно упрощенно \mintinline{c++}{unique_ptr} с deleter'ом можно записать следующим образом:
+\begin{listing}
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+template <typename T, typename D = default_delete<T>>
+struct unique_ptr
+{
+    using pointer = typename D::pointer;
+
+    unique_ptr(pointer);
+    unique_ptr(pointer, D);
+
+    ~unique_ptr()
+    {
+        deleter(ptr);
+    }
+
+private:
+    pointer ptr;
+    D deleter;
+};
+\end{minted}
+\caption{Упрощенная реализация \mintinline{c++}{unique_ptr} с deleter'ом}
+\label{listing:unique_ptr_with_deleter}
+\end{listing}
+
+Таким образом видно, что на самом деле \mintinline{c++}{unique_ptr} хранит в качестве указателя не обязательно \mintinline{c++}{T*}, а любой объект типа \mintinline{c++}{D::pointer}. По этой причине некоторые члены \mintinline{c++}{unique_ptr} не помечены \mintinline{c++}{noexcept}, например, \mintinline{c++}{operator*}.
+
+По умолчанию в качестве deleter используется класс \mintinline{c++}{default_delete}, который вызывает оператор \mintinline{c++}{delete} на переданном указателе.
+
+В реальности \mintinline{c++}{std::unique_ptr} устроен гораздо сложнее, чем показано на листинге \ref{listing:unique_ptr_with_deleter}. Это обусловлено следующими причинами:
+
+\begin{itemize}
+    \item Шаблонный параметр \mintinline{c++}{D} может быть не типом deleter'а, а ссылой на deleter. Поэтому при обращении \mintinline{c++}{D::pointer}, предварительно следует снять ссылку с \mintinline{c++}{D}.
+    \item Deleter не обязан содержать typedef \mintinline{c++}{pointer}. Если он отсутствует, \mintinline{c++}{unique_ptr} должен использовать \mintinline{c++}{T*} вместо него. Это требует от \mintinline{c++}{unique_ptr} использования SFINAE-проверки.
+    \item Часто deleter является пустым объектом. Чтобы не увеличивать размер \mintinline{c++}{unique_ptr} при реализации используется empty-base оптимизация.
+\end{itemize}
+
 \subsection{Владение}
 Ответственность за удаление объекта называется владением. Например, unique\_ptr ответственен за удаление объекта на который он ссылается, соответственно говорят, что unique\_ptr владеет объектом, на который он ссылается. Про функцию \mintinline{c++}{reset(p)} говорят, что она передает владение объектом unique\_ptr'у, а функция \mintinline{c++}{release()}, наоборот, забирает владение объектом у unique\_ptr'а.
 
