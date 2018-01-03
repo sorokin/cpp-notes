@@ -70,6 +70,14 @@ class unique_ptr
 private:
     T* ptr;
 public:
+    unique_ptr()
+        : ptr(nullptr)
+    {}
+
+    unique_ptr(T* ptr)
+        : ptr(ptr)
+    {}
+
     ~unique_ptr()
     {
         delete ptr;
