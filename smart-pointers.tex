@@ -619,3 +619,46 @@ shared_ptr<D> derived = shared_ptr<D>(base, dynamic_cast<D*>(base.get()));
 shared_ptr<B> base;
 shared_ptr<D> derived = dynamic_pointer_cast<D>(base);
 \end{minted}
+
+\subsection{\mintinline{c++}{std::make_shared} / \mintinline{c++}{std::make_unique}}
+
+Рассмотрим следующий пример кода:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+shared_ptr<mytype> sp(new mytype(1, 2, 3));
+\end{minted}
+
+Данный код аллоцирует два объекта в куче. Один при создании \mintinline{c++}{new mytype}, второй --- внутри конструктора \mintinline{c++}{shared_ptr(T*)} для аллокации \mintinline{c++}{shared_count}. Это означает, что такое использование \mintinline{c++}{shared_ptr}'ов удваивает число аллокаций памяти. Это может негативно повлиять на производительность программы поскольку
+\begin{itemize}
+    \item Аллокации/освобождения памяти не самые быстрые операции, а их начинает делаться в два раза больше.
+    \item Удваивается число существующих объектов в памяти о которых нужно знать аллокатору памяти, что может увеличить время работы операций аллокации/освобождения.
+\end{itemize}
+
+Для решения этой проблемы существует специальная функция называемая \mintinline{c++}{make_shared}. \mintinline{c++}{make_shared} имеет следующую сигнатуру:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template<typename T, typename... Args>
+shared_ptr<T> make_shared(Args&&... args);
+\end{minted}
+
+\mintinline{c++}{make_shared} создает объект типа \mintinline{c++}{T} и возвращает \mintinline{c++}{shared_ptr} на него. При это \mintinline{c++}{make_shared} делает это используя лишь одну аллокацию памяти то есть и объект и \mintinline{c++}{shared_count} выделяются в одном блоке памяти.
+
+Использование \mintinline{c++}{make_shared} поволяет приблизить \mintinline{c++}{shared_ptr} по эффективности к \mintinline{c++}{intrusive_ptr}. При этом всё равно сохраняется то негативное свойство, что каждый \mintinline{c++}{shared_ptr} хранит два указателя, а не один как у \mintinline{c++}{intrusive_ptr}.
+
+Отдельно следует упомянуть о взаимодействии \mintinline{c++}{make_shared} и \mintinline{c++}{weak_ptr}. Когда управляемый объект и \mintinline{c++}{shared_count} выделены как два разных объекта, управляемый объект удаляется, когда число сильных ссылок достигает нуля, а \mintinline{c++}{shared_count} --- когда число ссылок обоего типа достигает нуля. При использовании \mintinline{c++}{make_shared} эти объекты выделены одним блоком памяти поэтому их невозможно освободить независимо. При использовании \mintinline{c++}{make_shared}, когда число сильных ссылок достигает нуля у управляемого объекта вызывается лишь деструктор, а память не освобождается. Память будет освобождена, когда число ссылок обоего типа достигнет нуля. Поэтому в случае когда управляемый объект большой и существуют \mintinline{c++}{weak_ptr}'ы на него, которые живут сильно дольше чем \mintinline{c++}{shared_ptr}'ы возможно имеет смысл не использовать \mintinline{c++}{make_shared}.
+
+Появление \mintinline{c++}{make_shared} решило ещё одну проблему. Рассмотрим следующий пример:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+f(std::shared_ptr<T>(1, 2, 3), g());
+\end{minted}
+
+Стандарт C++ не предписывает определенного порядка вычисления аргументов функции, причём не гарантируется, что один аргумент полностью вычислился перед тем как начнёт вычисляться другой. Например, допустимым порядком вычисления аргументов является \mintinline{c++}{new T} затем \mintinline{c++}{g()} и затем \mintinline{c++}{shared_ptr(T*)}. Следовательно если \mintinline{c++}{g()} бросит исключение, то аллокация \mintinline{c++}{new T} освобождена не будет. \mintinline{c++}{make_shared} позволяет избежать этой проблемы:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+f(std::make_shared<T>(1, 2, 3), g());
+\end{minted}
+
+В данном случае в каком бы порядке не вычислялись аргументы утечка памяти невозможна, поскольку операция аллокации объекта и оборачивания его в \mintinline{c++}{shared_ptr} не может быть разделена операцией бросающей исключение.
+
+Начиная с C++14 аналогичная функция-фабрика \mintinline{c++}{std::make_unique} была добавлена для \mintinline{c++}{std::unique_ptr}. С появлением \mintinline{c++}{make_shared} и \mintinline{c++}{make_unique} необходимость делать \mintinline{c++}{new} а затем оборачивать результат в умный указатель отпала, что являлось наиболее частым применением \mintinline{c++}{new}. Поэтому начиная с C++14 необходимость использовать голый \mintinline{c++}{new} практически не встречается за редким исключением низкоуровневого кода управляющего временем жизни объектов вручную.
