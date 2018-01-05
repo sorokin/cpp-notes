@@ -9,7 +9,7 @@ string& string::operator=(string const &other) {
     memcpy(data, other.data, sizeof(other.data);
     return *this;
 }
-\end{minted}    
+\end{minted}
 
 На первый взгляд это довольно безобидный код. Но он совершено не учитывает возможность возникновения исключения при выделении памяти. Что произойдет в этом случаи?
 
