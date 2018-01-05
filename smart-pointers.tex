@@ -341,8 +341,8 @@ template <class T> struct linked_ptr
     ...
 private:
     T* ptr;
-    mutable linked_ptr* prev; 
-    mutable linked_ptr* next; 
+    mutable linked_ptr const* prev; 
+    mutable linked_ptr const* next; 
 };
 \end{minted}
 Члены prev и next помечены как \mintinline{c++}{mutable}, потому что в случае если мы имеем константный \mintinline{c++}{const linked_ptr& p1}, который передается в функцию, и неконстантный \mintinline{c++}{linked_ptr& p2}, который является его соседом в двусвязном списке, то при изменении p1 придется поменять prev и next у p2.\\
@@ -728,11 +728,13 @@ framesep=2mm]
 
 ~linked_ptr() noexcept 
 {
-    if (!ptr) return;
-    if (prev == this)
-        delete ptr;
-    if (prev) prev->next = next;
-    if (next) next->prev = prev;
+    if (!payload) return;
+    if (prev == this) {
+        delete payload;
+    } else {
+        if (prev) prev->next = next;
+        if (next) next->prev = prev;
+    }
 }
 
 \end{minted}
