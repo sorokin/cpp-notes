@@ -391,6 +391,7 @@ std::shared_ptr<T> p2(p);
 Чтобы не происходило разделение счетчика ссылок нужно не оборачивать один сырой указатель в \mintinline{c++}{shared_ptr} дважды. Использование \mintinline{c++}{std::make_shared} (раздел \ref{make_shared}), либо использование \mintinline{c++}{std::enable_shared_from_this} (раздел \ref{enable_shared_from_this}) также позволяет избежать разделения счетчика ссылок.
 
 \subsubsection{Настраиваемый deleter}
+\label{shared_ptr_custom_deleter}
 
 Аналогично \mintinline{c++}{unique_ptr} \mintinline{c++}{shared_ptr} позволяет настроить как именно удалять объект, когда не осталось \mintinline{c++}{shared_ptr}'ов ссылающихся на него. В отличие от \mintinline{c++}{unique_ptr} тип \mintinline{c++}{shared_ptr} не зависит от типа deleter'а.
 
@@ -505,6 +506,7 @@ private:
 Ещё одним применением aliasing конструкторов является следующее. При хранении дерева объектов они позволяют, гарантировать, что пока существует хоть один указатель на элемент дерева, то всё дерево продолжает существовать.
 
 \subsubsection{\mintinline{c++}{std::weak_ptr}}
+\label{weak_ptr}
 
 Рассмотрим следующую задачу. Пусть у нас есть функция \mintinline{c++}{image load_image(string name)} загружающая картинку по имени. И пусть так оказалось, что часто пользователи этой функции загружают одну и ту же картинку несколько раз и держать в памяти несколько копий одной картинки. Требуется сделать компонент, который если изображение уже загружено, не будет загружать его второй раз, а будет переиспользовать существующее. Освобождаться изображение должно только тогда, когда последний пользователь закончил с ним работать.
 
@@ -704,3 +706,54 @@ private:
 Конструктор \mintinline{c++}{shared_ptr(T*)} использует SFINAE-проверки для определения наследования от \mintinline{c++}{enable_shared_from_this}, поэтому для того, чтобы \mintinline{c++}{enable_shared_from_this} работал корректо необходимо, наследоваться от него public и чтобы существовал ровно один базовый subobject этого типа.
 
 Запись в \mintinline{c++}{enable_shared_from_this::weak_this} делается при создании первого \mintinline{c++}{shared_ptr}, а зануляется \mintinline{c++}{enable_shared_from_this::weak_this} когда на объект перестает ссылаться последний \mintinline{c++}{shared_ptr}, следовательно использовать \mintinline{c++}{shared_from_this()} внутри конструктора и внутри деструктора нельзя. Если это сделать будет выброшено исключение \mintinline{c++}{std::bad_weak_ptr}.
+
+\subsection{\mintinline{c++}{boost::intrusive_ptr}}
+
+\mintinline{c++}{boost::intrusive_ptr} --- умный указатель с разделяемым владением, реализованный в библиотеке Boost. Так же как и \mintinline{c++}{std::shared_ptr}, он использует подсчет ссылок, но в отличии от \mintinline{c++}{std::shared_ptr} в \mintinline{c++}{boost::intrusive_ptr<T>} счетчик ссылок хранится в самом объекте класса T, на который он ссылается.
+
+Для использования \mintinline{c++}{intrusive_ptr} с пользовательским типом \mintinline{c++}{mytype} требуется реализовать две функции:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+void intrusive_ptr_add_ref(mytype* p);
+void intrusive_ptr_release(mytype* p);
+\end{minted}
+
+Функция \mintinline{c++}{intrusive_ptr_add_ref} вызывается, когда требуется увеличить счетчик ссылок. Функция \mintinline{c++}{intrusive_ptr_release} вызывается тогда, когда требуется его уменьшить и если он достигает нуля, то функция \mintinline{c++}{intrusive_ptr_release} должна самостоятельно удалить объект.
+
+Пример использования:
+
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+#include <boost/intrusive_ptr.hpp>
+
+struct mytype
+{
+    int ref_count;
+};
+
+void intrusive_ptr_add_ref(mytype *p)
+{
+    ++p->ref_count;
+}
+
+void intrusive_ptr_release(mytype *p)
+{
+    if (--p->ref_count == 0)
+        delete p;
+}
+
+int main()
+{
+    // аллоцированный объект будет удален при выходе из main
+    boost::intrusive_ptr<mytype> p(new mytype());
+}
+\end{minted}
+
+По сравнению с \mintinline{c++}{shared_ptr}, \mintinline{c++}{boost::intrusive_ptr} не накладывает ограничений на тип счетчика ссылок. Например, возможно использовать не thread-safe переменную в качестве счетчика ссылок, если известно, что все владельцы объекта работают в одном потоке. Также объекты типа \mintinline{c++}{intrusive_ptr} занимаю один указатель, а не два как у \mintinline{c++}{shared_ptr}. Поэтому можно сказать, что \mintinline{c++}{intrusive_ptr} эффективнее чем \mintinline{c++}{shared_ptr}, однако он не поддерживает такие возможности \mintinline{c++}{shared_ptr} как \mintinline{c++}{weak_ptr} (раздел \ref{weak_ptr}) и настраиваемый deleter (раздел \ref{shared_ptr_custom_deleter}).
