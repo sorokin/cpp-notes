@@ -388,6 +388,8 @@ std::shared_ptr<T> p2(p);
 \end{minted}
 Данный код содержит ошибку. Каждый из вызовов \mintinline{c++}{shared_ptr(T*)} создаст свой собственный счетчик ссылок. В результате получится один объект и два счетчика ссылок к нему. Объект удалится, когда хотя бы один из счетчиков ссылок достигнет нуля. Когда второй из счетчиков достигнет нуля произойдет ошибка повторного удаления. Описанная ситуация называется разделением ({\it split}) счетчика ссылок. Разделение счетчика ссылок является ошибкой и не должно возникать в корректных программах.
 
+Чтобы не происходило разделение счетчика ссылок нужно не оборачивать один сырой указатель в \mintinline{c++}{shared_ptr} дважды. Использование \mintinline{c++}{std::make_shared} (раздел \ref{make_shared}), либо использование \mintinline{c++}{std::enable_shared_from_this} (раздел \ref{enable_shared_from_this}) также позволяет избежать разделения счетчика ссылок.
+
 \subsubsection{Настраиваемый deleter}
 
 Аналогично \mintinline{c++}{unique_ptr} \mintinline{c++}{shared_ptr} позволяет настроить как именно удалять объект, когда не осталось \mintinline{c++}{shared_ptr}'ов ссылающихся на него. В отличие от \mintinline{c++}{unique_ptr} тип \mintinline{c++}{shared_ptr} не зависит от типа deleter'а.
@@ -621,6 +623,7 @@ shared_ptr<D> derived = dynamic_pointer_cast<D>(base);
 \end{minted}
 
 \subsection{\mintinline{c++}{std::make_shared} / \mintinline{c++}{std::make_unique}}
+\label{make_shared}
 
 Рассмотрим следующий пример кода:
 
@@ -662,3 +665,42 @@ f(std::make_shared<T>(1, 2, 3), g());
 В данном случае в каком бы порядке не вычислялись аргументы утечка памяти невозможна, поскольку операция аллокации объекта и оборачивания его в \mintinline{c++}{shared_ptr} не может быть разделена операцией бросающей исключение.
 
 Начиная с C++14 аналогичная функция-фабрика \mintinline{c++}{std::make_unique} была добавлена для \mintinline{c++}{std::unique_ptr}. С появлением \mintinline{c++}{make_shared} и \mintinline{c++}{make_unique} необходимость делать \mintinline{c++}{new} а затем оборачивать результат в умный указатель отпала, что являлось наиболее частым применением \mintinline{c++}{new}. Поэтому начиная с C++14 необходимость использовать голый \mintinline{c++}{new} практически не встречается за редким исключением низкоуровневого кода управляющего временем жизни объектов вручную.
+
+\subsection{\mintinline{c++}{std::enable_shared_from_this}}
+\label{enable_shared_from_this}
+
+В некоторых случаях требуется иметь возможность получить \mintinline{c++}{shared_ptr} на \mintinline{c++}{this} внутри функций-членов класса. Взять указатель \mintinline{c++}{this} и обернуть его в \mintinline{c++}{shared_ptr} не сработает --- это приведет к разделению счетчика ссылок (раздел \ref{reference_counter_split_problem}).
+
+Для решения этой проблемы существует специальный класс называющийся \mintinline{c++}{std::enable_shared_from_this}. Для его использования требуется отнаследовать тот класс, внутри которого необходимо получать \mintinline{c++}{shared_ptr} на \mintinline{c++}{this}, от \mintinline{c++}{std::enable_shared_from_this}:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+struct mytype : std::enable_shared_from_this<mytype>
+{
+    shared_ptr<mytype> foo() const
+    {
+        return shared_from_this();
+    }
+};
+\end{minted}
+
+Наследование от \mintinline{c++}{std::enable_shared_from_this} изменяет поведение конструктора \mintinline{c++}{shared_ptr(T*)}. Если \mintinline{c++}{T} наследуется от \mintinline{c++}{enable_shared_from_this<T>}, он не создает новый \mintinline{c++}{shared_count}, а переиспользует существующий. Внутри \mintinline{c++}{enable_shared_from_this} хранит \mintinline{c++}{weak_ptr}:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct enable_shared_from_this
+{
+    shared_ptr<T> shared_from_this()
+    {
+        return shared_ptr<T>(weak_this);
+    }
+
+private:
+    weak_ptr<T> weak_this;
+};
+\end{minted}
+
+Для удобства \mintinline{c++}{enable_shared_from_this} содержит функции \mintinline{c++}{shared_from_this()} и \mintinline{c++}{weak_from_this()} возвращающие \mintinline{c++}{shared_ptr} и \mintinline{c++}{weak_ptr} на \mintinline{c++}{this} соответственно.
+
+Конструктор \mintinline{c++}{shared_ptr(T*)} использует SFINAE-проверки для определения наследования от \mintinline{c++}{enable_shared_from_this}, поэтому для того, чтобы \mintinline{c++}{enable_shared_from_this} работал корректо необходимо, наследоваться от него public и чтобы существовал ровно один базовый subobject этого типа.
+
+Запись в \mintinline{c++}{enable_shared_from_this::weak_this} делается при создании первого \mintinline{c++}{shared_ptr}, а зануляется \mintinline{c++}{enable_shared_from_this::weak_this} когда на объект перестает ссылаться последний \mintinline{c++}{shared_ptr}, следовательно использовать \mintinline{c++}{shared_from_this()} внутри конструктора и внутри деструктора нельзя. Если это сделать будет выброшено исключение \mintinline{c++}{std::bad_weak_ptr}.
