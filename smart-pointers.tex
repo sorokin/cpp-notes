@@ -519,6 +519,7 @@ shared_ptr<D> derived = dynamic_pointer_cast<D>(base);
 \mintinline{c++}{linked_ptr} --- умный указатель с разделяемым владением, реализованный с помощью двусвязного списка.\\
 \mintinline{c++}{linked_ptr} хранит в себе указатель на объект и два указателя на соседние \mintinline{c++}{linked_ptr}'ы в двусвязном списке. Для каждого двусвязного списка образованного из \mintinline{c++}{linked_ptr}'ов верно, что все указатели в нём владеют одним общим объектом.
 
+\begin{listing}
 \begin{minted}[
 linenos,
 frame=lines,
@@ -533,10 +534,12 @@ private:
     mutable linked_ptr const* next; 
 };
 \end{minted}
-Члены prev и next помечены как \mintinline{c++}{mutable}, потому что в случае если мы имеем константный \mintinline{c++}{const linked_ptr& p1}, который передается в функцию, и неконстантный \mintinline{c++}{linked_ptr& p2}, который является его соседом в двусвязном списке, то при изменении p1 придется поменять prev и next у p2.\\
-Так, например, может выглядеть фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ptr1, ptr2, ptr3, указывающими на общий объект object:\\
+\end{listing}
 
-\begin{minipage}[h]{0.4\linewidth}
+Члены \mintinline{c++}{prev} и \mintinline{c++}{next} помечены как \mintinline{c++}{mutable}, поскольку даже у константных \mintinline{c++}{linked_ptr}'ов они могут изменяться. Это происходит, например, при появлении и удалении соседей.\\
+На рисунке \ref{fig:linked_ptr_chain} приведен фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами \mintinline{c++}{ptr1}, \mintinline{c++}{ptr2}, \mintinline{c++}{ptr3}, указывающими на общий объект \mintinline{c++}{object}.
+
+\begin{figure}
 \centering
 \begin{asy}
 real arrow_len = 5;
@@ -576,12 +579,12 @@ real arrow_right_y = box_y0 + arrow_right_offset;
 real arrow_down_offset = box_w * 0.5;
 
 real label_offset = box_h / 6.0;
-size(15cm,0);
+size(10cm,0);
 
 void draw_arrow(path p, real relative_pos, string text, align al) {
     draw(
         L=Label(
-            scale(0.5)*("" + text + ""),
+            scale(0.7)*("" + text + ""),
             position=Relative(relative_pos),
             gray,
             align = al
@@ -639,7 +642,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     if (x0 == obj_mid) {
         draw(
             L=Label(
-                scale(0.5)*"ptr",
+                scale(0.7)*"ptr",
                 position=Relative(0.7),
                 gray,
                 align=-N + W * 0.7
@@ -650,7 +653,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     } else if (x0 < obj_mid) 
         draw(
             L=Label(
-                scale(0.5)*"ptr",
+                scale(0.7)*"ptr",
                 position=Relative(0.6),
                 gray,
                 align=-N
@@ -661,7 +664,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     else
         draw(
             L=Label(
-                scale(0.5)*"ptr",
+                scale(0.7)*"ptr",
                 position=Relative(0.5),
                 gray,
                 align=-N
@@ -676,7 +679,7 @@ void draw_box(real x0, real x1, int i, real y0 = box_y0, real y1 = box_y1, pen c
     path ptr = box((x0, y0), (x1, y1));
     fill(ptr, color);
     draw(ptr, black);
-    label("ptr" + string(i) + "", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
+    label(scale(0.7) * ("ptr" + string(i) + ""), (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
 }
 
 void draw_last_arrows() {
@@ -690,7 +693,7 @@ void draw_last_arrows() {
 path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
 fill(obj, deepgreen);
 draw(obj, black);
-label("object", (obj_label_x, obj_label_y), white);
+label(scale(0.7) * "object", (obj_label_x, obj_label_y), white);
 
 
 for (int i = 1; i <= box_count; ++i) {
@@ -700,12 +703,32 @@ for (int i = 1; i <= box_count; ++i) {
 }
 draw_last_arrows();
 \end{asy}
-\label{fig:prob1_6_2}
-\end{minipage}
+\caption{Фрагмент двусвязного списка, образованного \mintinline{c++}{linked_ptr}'ами ссылающимися на общий объект}
+\label{fig:linked_ptr_chain}
+\end{figure}
 
-При копировании \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} новый ptr4 вставляется в тот же список, где был исходный ptr2. После выполнения этой операции двусвязный список указателей будет выглядеть следующим образом:\\
+Конструктор копирования \mintinline{c++}{linked_ptr}'а вставляет новый \mintinline{c++}{linked_ptr} в тот же список где был исходный. На рисунек \ref{fig:linked_ptr_chain_inserted} показан результат копирования \mintinline{c++}{linked_ptr} \mintinline{c++}{ptr2}.
 
-\begin{minipage}[h]{0.4\linewidth}
+\begin{minted}[
+linenos,
+frame=lines,
+framesep=2mm]
+{c++}
+linked_ptr(linked_ptr const& other) noexcept
+    : ptr(other.ptr)
+{
+    if (ptr == nullptr) {
+        prev = next = nullptr;
+        return;
+    }
+    prev = &other;
+    next = other.next;
+    prev->next = this;
+    next->prev = this;
+}
+\end{minted}
+
+\begin{figure}
 \centering
 \begin{asy}
 real arrow_len = 5;
@@ -745,12 +768,12 @@ real arrow_right_y = box_y0 + arrow_right_offset;
 real arrow_down_offset = box_w * 0.5;
 
 real label_offset = box_h / 6.0;
-size(15cm,0);
+size(10cm,0);
 
 void draw_arrow(path p, real relative_pos, string text, align al) {
     draw(
         L=Label(
-            scale(0.5)*("" + text + ""),
+            scale(0.7)*("" + text + ""),
             position=Relative(relative_pos),
             gray,
             align = al
@@ -808,7 +831,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     if (x0 == obj_mid) {
         draw(
             L=Label(
-                scale(0.5)*"ptr",
+                scale(0.7)*"ptr",
                 position=Relative(0.6),
                 gray,
                 align=-N + W * 0.7
@@ -819,7 +842,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     } else if (x0 < obj_mid) 
         draw(
             L=Label(
-                scale(0.5)*"ptr",
+                scale(0.7)*"ptr",
                 position=Relative(0.5),
                 gray,
                 align=-N
@@ -830,7 +853,7 @@ void draw_arrow_to_obj(real x0, real y0) {
     else
         draw(
             L=Label(
-                scale(0.5)*"ptr",
+                scale(0.7)*"ptr",
                 position=Relative(0.5),
                 gray,
                 align=-N
@@ -845,7 +868,7 @@ void draw_box(real x0, real x1, int i, real y0 = box_y0, real y1 = box_y1, pen c
     path ptr = box((x0, y0), (x1, y1));
     fill(ptr, color);
     draw(ptr, black);
-    label("ptr" + string(i) + "", (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
+    label(scale(0.7) * ("ptr" + string(i) + ""), (x0 + box_label_x_offset, y0 + box_label_y_offset), white);
 }
 
 void draw_last_arrows() {
@@ -859,7 +882,7 @@ void draw_last_arrows() {
 path obj = box((obj_x0,obj_y0), (obj_x1,obj_y1));
 fill(obj, deepgreen);
 draw(obj, black);
-label("object", (obj_label_x, obj_label_y), white);
+label(scale(0.7) * "object", (obj_label_x, obj_label_y), white);
 
 
 for (int i = 1; i <= 2; ++i) {
@@ -885,27 +908,9 @@ draw_curved_arrow((x2_1, arrow_right_y), (x4_0, y4_0 + arrow_right_offset), "pre
 //draw_curved_arrow((x4_1, y4_0 + arrow_left_offset), (x3_0, arrow_left_y), "next", false);
 //draw_curved_arrow((x4_1, y4_0 + arrow_right_offset), (x3_0, arrow_right_y), "prev", true);
 \end{asy}
-\label{fig:prob1_6_2}
-\end{minipage}
-
-\begin{minted}[
-linenos,
-frame=lines,
-framesep=2mm]
-{c++}
-linked_ptr(linked_ptr const& other) noexcept
-    : ptr(other.ptr)
-{
-    if (ptr == nullptr) {
-        prev = next = nullptr;
-        return;
-    }
-    prev = &other;
-    next = other.next;
-    prev->next = this;
-    next->prev = this;
-}
-\end{minted}
+\caption{Измененный список, полученный выполнением операции копирования \mintinline{c++}{linked_ptr<int> ptr4 = ptr2;} из списке показаном на рисунке \ref{fig:linked_ptr_chain}}
+\label{fig:linked_ptr_chain_inserted}
+\end{figure}
 
 При удалении \mintinline{c++}{linked_ptr} он удаляется из двусвязного списка. Если он был единственным элементом списка то он удаляет сам объект:
 \begin{minted}[
@@ -961,13 +966,13 @@ T* operator->() const noexcept { return ptr; } // вызов мембера об
 T& operator*() const { return *ptr; }
 \end{minted}
 
-\subsubsection{сравнение \mintinline{c++}{linked_ptr} и \mintinline{c++}{shared_ptr}}
+\subsubsection{Сравнение \mintinline{c++}{linked_ptr} и \mintinline{c++}{shared_ptr}}
 
 \begin{enumerate}
 \item При инициализации \mintinline{c++}{std::shared_ptr} сырым указателем, \mintinline{c++}{std::shared_ptr} аллоцирует дополнительный объект в куче для счетчика ссылок. \mintinline{c++}{linked_ptr} не аллоцирует дополнительной памяти.
 \item \mintinline{c++}{linked_ptr} имеет больший размер, чем \mintinline{c++}{shared_ptr} --- три указателя, вместо двух у \mintinline{c++}{shared_ptr}.
 \item \mintinline{c++}{std::shared_ptr} в стандартной библиотеке является thread-safe. Он использует атомарные операции инкремента и декремента для счетчика ссылок. Thread-safe \mintinline{c++}{linked_ptr} не может быть так просто реализован.
-\item \mintinline{c++}{linked_ptr} также имеет внутри больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} лишь инкрементирует счетчик.
+\item \mintinline{c++}{linked_ptr} производит больше присваиваний и сравнений на каждую операцию копирования и присваивания, в то время как \mintinline{c++}{std::shared_ptr} лишь инкрементирует счетчик.
 \end{enumerate}
 
 \subsection{\mintinline{c++}{intrusive_ptr}}
