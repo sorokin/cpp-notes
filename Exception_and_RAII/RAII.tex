@@ -1,40 +1,20 @@
 \section{RAII-classes}
 \subsection{Пример}
-Начнем с примера. Пусть мы хотим открыть несколько файлов.
+Начнем с примера.
 
-% TODO: примеры
-bool process_files()
-{
-    FILE* f1 = fopen("foo");
-    if (!f1)
-        return false;
-
-    FILE* f2 = fopen("bar");
-    if (!f2)
-        return false;
-
-    FILE* f3 = fopen("baz");
-    if (!f3)
-        return false;
-
-    fclose(f3);
-    fclose(f2);
-    fclose(f1);
-    return true;
-}
-
-
-FILE* my_fopen(char const* filename)
-{
-    FILE* result = fopen(filename);
+У нас есть функция \mintinline{c++}{my_fopen()} для открытия файлов на чтение, которая в случаи ошибки открытия файла кидает исключение.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+FILE* my_fopen(char const* filename) {
+    FILE* result = fopen(filename, "r");
     if (!result)
         throw std::runtime_error("fopen failed");
 
     return result;
 }
-
-void process_files()
-{
+\end{minted}
+Пусть необходимо в функции \mintinline{c++}{process_files()} открыть несколько файлов.
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void process_files() {
     FILE* f1 = fopen("foo");
     FILE* f2 = fopen("bar");
     FILE* f3 = fopen("baz");
@@ -43,118 +23,73 @@ void process_files()
     fclose(f2);
     fclose(f1);
 }
-
-void process_files()
-{
+\end{minted}
+Но такой код не гарантирует закрытие файлов в случае возникновения исключения.
+Тогда давайте вставим проверку исключений:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+void process_files() {
     FILE* f1 = fopen("foo");
-    try
-    {
+    try {
         FILE* f2 = fopen("bar");
-        try
-        {
+        try {
             FILE* f3 = fopen("baz");
-
-            try
-            {
-                // ...
+            try {
+                /* ... */
             }
-            catch (...)
-            {
+            catch(...) {
                 fclose(f3);
                 throw;
             }
             fclose(f3);
         }
-        catch (...)
-        {
+        catch(...) {
             fclose(f2);
             throw;
         }
         fclose(f2);
     }
-    catch (...)
-    {
+    catch(...) {
         fclose(f1);
         throw;
     }
     fclose(f1);
 }
-
-void process_files()
-{
-    X* x = new X;
-    Y* y = new Y;
-    Z* z = new Z;
-
-    delete z;
-    delete y;
-    delete x;
-}
-
-void process_files()
-{
-    file f1("foo");
-    file f2("bar");
-    file f3("baz");
-}
-
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-void read_some_file() {
-    open_for_read("first_part.txt");
-    open_for_read("second_part.txt");
-    open_for_read("third_part.txt");
-}
 \end{minted}
+Итого код увеличился в несколько раз.
 
-%TODO переделать пример.
 
-Но такой код не гарантирует закрытие файлов в случае возникновения исключения.
-Тогда давайте вставим проверку исключений:
+Однако, с помощью RAII-класса файловых дескрипторов \mintinline{c++}{Reader}, можно упростить код:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-void read_some_file() {
-    try {
-        open_for_read("first_part.txt");
-        open_for_read("second_part.txt");
-        open_for_read("third_part.txt");
-    } catch (...) {
-        // Но мы не может понять какой файл открылся, а какой нет. :(
-    }
-}
-\end{minted}
-
-Так как мы хотим запоминать какие файлы успели открыться, то перепишем так:
-
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-void read_some_file() {
-    size_t i = 0;
-    string files[3] = {"first_part.txt", "second_part.txt", "third_part.txt" };
-    try {
-        for (; i < 3; ++i) {
-            open_for_read(files[i]);
-        }
-    } catch (...) {
-        for (size_t j = i; j != 0; --j) {
-            close(files[j - 1]);
-        }
-    }
-}
-\end{minted}
-
-Итого код увеличился в два раза.
-
-С помощью RAII-класса файловых дескрипторов Reader, можно упростить код:
-
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-void read_some_file() {
-    Reader reader1("first_part.txt");
-    Reader reader2("second_part.txt");
-    Reader reader3("third_part.txt");
+void process_files() {
+    Reader f1("foo");
+    Reader f2("bar");
+    Reader f3("baz");
 }
 \end{minted}
 
 Этот код получился довольно простой и безопасный. Почему безопасный? Потому, что объект \mintinline{c++}{Reader} открывает файл в конструкторе и закрывает в деструкторе. И если возникнет исключение, то при раскрутке стека удаляться все локальные объекты, в том числе и файловые дескрипторы, закрывая файлы. Если же какой-то файл не успел открыться, то не успел и создаться объект отвечающий за него.
 
-Это удобная идея получила название: RAII.
+Реализация \mintinline{c++}{Reader} могла бы выглядеть так:
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+class Reader {
+public:
+    Reader(char const *filename):
+        _file(fopen(filename, "r")) { } //захват ресурса
+
+    ~Reader() {
+        fclose(_file); // освобождение ресурса
+    }
+
+    Reader(Reader const &) = delete;
+    Reader operator=(Reader const &) = delete;
+
+private:
+    FILE *_file;
+};
+\end{minted}
+Важно, что мы запретили копирование объектов класса, так как за один файл должен отвечать один объект. Без этого файл мог бы два раза закрыться.
+
+Это удобная идея получила название <<RAII>>.
 
 \subsection{Определение}
 
@@ -163,7 +98,7 @@ void read_some_file() {
 
 Также важно подумать, что должно происходить при копировании объекта, часто мы явно запрещаем это делать. Так как иначе ресурс может освободиться два раза.
 
-\subsection{Что это дает?}
+\subsection{Зачем это нужно?}
 \begin{itemize}
 \item Удобство кода: не нужно явно каждый раз в конце тела функции освобождать ресурсы и учитывать какие ресурсы успели захватиться, а какие нет. Когда выполнение текущего блока будет завершено, локальные объекты RAII-классов удалятся и необходимы ресурсы освободятся автоматически.
 \item Безопасность исключений: Если вызывается исключение, то гарантируется, что стек очиститься и все локальные объекты удаляться, а значит и освободятся ресурсы.
@@ -172,41 +107,23 @@ void read_some_file() {
 
 \textcolor{red}{NB}) Это идиома работает не только в С++, а любом языке с предсказуемым временем жизни объектов.
 
-
-Вот небольшой пример RAII-класса, который будет управлять файлом.
-Ресурсом является данные типа FILE (формат файла в Си).
-\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-class File {
-public:
-    File(char const *filename, char const *mode)
-        : _file(fopen(filename, mode)) { } //захват ресурса
-
-    ~File() {
-        fclose(_file); // освобождение ресурса
-    }
-
-    File(File const &) = delete;
-    File operator=(File const &) = delete;
-
-private:
-    FILE *_file;
-};
-\end{minted}
-
-RAII часто встречается стандартной библиотеке:
+\textcolor{red}{NB}) RAII часто встречается стандартной библиотеке:
 \begin{itemize}
 \item Smart pointers -- инкапсулируют несколько видов управления памятью
-\item i/ofstream -- инкапсулиет оправление файлом
-\item Различные контейнеры stl -- инкапсулируют управление памятью, для хранение объектов.
+\item i/ofstream -- инкапсулиет управление файлом
+\item Различные контейнеры stl -- инкапсулируют управление памятью, для хранение объектов в структурах данных.
 \end{itemize}
 
 \subsection{Best practice}
-
-Вернемся к предыдущему примеру File.
+\begin{itemize}
+\item
+Начиная с с++11 есть возможность хранить RAII-классы в контейнерах с помощью механизма перемещения, для этого необходимо реализовать конструктор перемещения.
+\item
+Вернемся к предыдущему примеру Reader.
 Пусть в конструкторе есть код, который может сгенерировать исключение, тогда возникает проблема освобождения ресурса.
 
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-File::File(char const *filename, char const *mode)
+Reader::Reader(char const *filename, char const *mode)
     : _file(fopen(filename, mode)) {
     //код допускающий исключение
 }
@@ -214,11 +131,11 @@ File::File(char const *filename, char const *mode)
 Если в теле конструктора происходит исключение, то деструктор не вызовется, так как объект не считается созданным. Что делать?
 
 Решение № 1
-Написать try-catch
+Написать try-catch:
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-class File {
+class Reader {
 public:
-    File(char const *filename, char const *mode) try
+    Reader(char const *filename, char const *mode) try
         : _file(fopen(filename, mode)) {
     //код допускающий исключение
     }
@@ -226,7 +143,7 @@ public:
         destruct_obj();
     }
 
-    ~File() {
+    ~Reader() {
         destruct_obj();
     }
 
@@ -237,52 +154,51 @@ private:
     FILE * _file;
 };
 \end{minted}
-Минусы решения: код раздулся.
+Но это вызывает сильное раздувание кода.
 
 Решение № 2
 Можно сделать отдельный подкласс, который хранит в себе ресурс.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-class File {
-    struct FileHandle {
-        FileHandle(FILE *fh)
+class Reader {
+    struct ReaderHandle {
+        ReaderHandle(FILE *fh)
         : _fh(fh) { }
 
-        ~FileHandle() {
+        ~ReaderHandle() {
             fclose(_fh);
         }
 
         FILE *_fh;
     };
 public:
-    File(char const * filename, char const * mode)
+    Reader(char const * filename, char const * mode)
     : _file(fopen(filename, mode)) {
         // код допускающий исключения
     }
 
-    ~File() = default;
+    ~Reader() = default;
 
 private:
-    FileHandle _file;
+    ReaderHandle _file;
 };
 \end{minted}
-
 Теперь все тоже хорошо, так как при возникновении исключения, вызовутся деструкторы от все членов класса.
 
 Решение № 3 (начиная с С++11)
 Делегирующий конструктор.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
-class File
+class Reader
 {
-    File(FILE * file)
+    Reader(FILE * file)
         : _file(file) { }
 
 public:
-    File(char const * filename, char const * mode)
-        : File(fopen(filename, mode)) {
+    Reader(char const * filename, char const * mode)
+        : Reader(fopen(filename, mode)) {
         // код допускающий исключения
     }
 
-    ~File() {
+    ~Reader() {
         fclose(_file);
     }
 
@@ -290,5 +206,5 @@ private:
     FILE *_file;
 };
 \end{minted}
-
-Дело в том, что если мы в конструкторе вызываем другой конструктор, то после его выполнения объект считается созданным и уничтожится автоматически.
+Если возникнет исключение, то объект к этому времени будет считаться созданным, так как один конструктор уже отработал. Благодаря этому он уничтожится автоматически.
+\end{itemize}

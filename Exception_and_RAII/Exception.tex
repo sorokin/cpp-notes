@@ -324,7 +324,7 @@ void copy_construct(T* dist, T const * sourse, size_t size) {
     class OutputException(): public virtual InterfaceException {};
     class InputOrOutputException: public InputException, public OutputException {};
 \end{minted}
-    Важно что мы наследуемся от \mintinline{c++}{InterfaceException} вирутально, так как иначе \mintinline{c++}{catch(InterfaceException const&)} не будет ловить \mintinline{c++}{InputOrOutputException}. Это связано с тем, что путь наследования без виртуального наследования будет не опреден.
+    Важно что мы наследуемся от \mintinline{c++}{InterfaceException} виртуально, так как иначе \mintinline{c++}{catch(InterfaceException const&)} не будет ловить \mintinline{c++}{InputOrOutputException}. Это связано с тем, что путь наследования без виртуального наследования будет не опреден.
 
 \item
 Если необходимо бросать и ловить исключения из деструктора, то нужно помнить, что начиная с C++11, все деструкторы неявно помечены как \mintinline{c++}{noexcept}. Из-за этого необходимо явно указать, что дектруктор может бросать. Если этого не сделать, то при попытке выбросить исключение из деструктора вызовется функция \mintinline{c++}{std::terminate()}.
@@ -357,7 +357,7 @@ void copy_construct(T* dist, T const * sourse, size_t size) {
 \item Если конструктор или деструктор статического или локального для одного треда объект бросает исключение.
 \end{itemize}
 
-По умолчанию \mintinline{c++}{std::terminate()} просто вызвает \mintinline{c++}{std::abort()}, но можно это изменить, написав свою функцию \mintinline{c++}{my_terminate()} и зарегистриров ее как терминальную.
+По умолчанию \mintinline{c++}{std::terminate()} просто вызывает \mintinline{c++}{std::abort()}, но можно это изменить, написав свою функцию \mintinline{c++}{my_terminate()} и зарегистриров ее как терминальную.
 \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 void my_terminate() {
     cout << "It's not a bug, it's a feature!";
