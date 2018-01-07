@@ -1,5 +1,5 @@
 MAIN_FILE_BASE := main
-MAIN_FILE_DEPS := compilation.tex preprocessor.tex nullptr.tex smart-pointers.tex lambdas.tex
+MAIN_FILE_DEPS := compilation.tex preprocessor.tex exceptions.tex nullptr.tex smart-pointers.tex lambdas.tex
 HOW_TO_BASE := how-to-contribute
 TEX_CMD ?= pdflatex
 
