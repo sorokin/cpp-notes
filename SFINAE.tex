@@ -879,8 +879,7 @@
 	};
 
 	template <typename T>
-	int16_t has_f_help(typename 
-	    intergal_constant<sizeof(static_cast<int (T::*(int)>(&T::f))>::type*);
+	int16_t has_f_help(typename intergal_constant<sizeof(static_cast<int (T::*)(int)>(&T::f))>::type*);
 
 	template <typename T>
 	int32_t has_f_help(...);
