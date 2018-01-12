@@ -1,0 +1,905 @@
+\section{SFINAE}
+
+\subsection{Возвращаясь к перегрузке функций}
+
+	Прежде чем рассматривать SFINAE, полезно вспомнить правила разрешения перегрузок в C++. Неформально говоря, встречая в коде вызов функции \mintinline{c++}{f} с каким-то списком аргументов, компилятор собирает все функции с этим именем, которые ему видны (основываясь на правилах поиска в пространствах имён) и составляет из них список кандидатов. На этом этапе компилятором не учитываются ни список параметров, ни возвращаемое значение, ни тело функции. Список кандидатов составляется только из функций, имеющих нужное имя, до которых можно дотянуться.
+	
+	Например, если совершён вызов \mintinline{c++}{f(1)}, компилятор может добавить в список кандидатов функции со следующими сигнатурами:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	double f(double, double = 0)
+	int f(int, int = 0)
+	bool f(std::vector<bool>)
+	float f(float)
+	long f(long, long)
+	\end{minted}
+	
+	Далее начинается процесс отсева функций из списка кандидатов и его сужение. Отметим, что начиная с данного этапа размер списка будет только сужаться и увеличиваться более не будет. На этом шаге из списка удаляются те функции, размер списка параметров которых (с учётом параметров по умолчанию) не совпадает с размером списка аргументов вызываемой функции. То есть удалена будет функция \mintinline{c++}{long f(long, long)}.
+	
+	На следующем этапе исключаются функции, типы параметров которых отличаются от типов переданных аргументов, и при этом отсутствует способ преобразовать типы аргументов в типы параметров (то есть отсутствует конструктор преобразования или оператор преобразования). На этом этапе будет исключена \mintinline{c++}{bool f(std::vector <bool>)}
+	
+	После этого из списка оставшихся кандидатов компилятор выберет функцию, лучше всего соответствующую вызванной. В данном случае это будет функция 
+\mintinline{c++}{int f(int, int = 0)}, так как она не требует преобразования аргументов. Эта функция и будет вызвана. 
+
+	Отметим, что если на последнем этапе выбор осуществить не удаётся (то есть одинаковое соответствие дают несколько функций-кандидатов или в списке кандидатов не осталось функций), компилятор выдаст сообщение об ошибке. Например, в случае наличия функций
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	void f(int, double)
+	void f(double, int)
+	\end{minted}
+	
+	и вызова \mintinline{c++}{f(1, 1)}, компилятор объявит о неоднозначности.
+
+\subsection{Перегрузка и шаблонные функции}
+	Теперь рассмотрим, что произойдёт при добавлении к списку функций с подходящим именем шаблонной функции.
+
+	Пусть компилятор в процессе поиска находит шаблонную функцию с сигнатурой
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	T f(T)
+	\end{minted}
+	
+	Что изменится в вышеприведённом алгоритме? Изменится первая стадия. Если при поиске функций с заданным именем компилятор видит шаблонную функцию, он не сразу добавляет её в список кандидатов, а пытается произвести вывод и подстановку её аргументов\footnote{%
+	Дедукция аргументов шаблона - сложная и многозначная тема, желающим изучить её подробнее я я бы посоветовал прочитать соответствующую главу из книги Скота Майерса "Эффективный и современный C++".}.
+	
+	Если аргументы шаблона удалось вывести и подставить, функция с выведенными аргументами добавляется в список кандидатов. Заметим, что это происходит на первом шаге, когда для нешаблонных функций сравнивается только имя, без анализа аргументов.
+	
+	Таким образом, на первом этапе в список кандидатов добавится функция \mintinline{c++}{f<int> (int);} на дальнейших этапах она будет по таким же правилам участвовать в процессе определения перегруженной функции. 
+	
+	Согласно правилам разрешения перегрузок в C++, нешаблонная функция при прочих равных условиях предпочитается шаблонной. Следовательно, в конце будет выбрана не \mintinline{c++}{f<int>(int)}, а \mintinline{c++}{f(int, int = 0)}, так как эта функция не шаблонная.
+	
+	Выше было сказано, что если удаётся произвести дедукцию аргументов шаблона функции, то она, с выведенными аргументами, добавляется в список кандидатов. Что же происходит, если типы аргументов шаблона функции по какой-то причине не удаётся вывести или подставить? Функция просто не добавляется в список кандидатов при перегрузке и в дальнейшем рассмотрении не участвует. Это и есть правило SFINAE - Substitute Failure Is Not An Error, то есть неудача при подстановке - это не ошибка.
+	
+	\vspace{\baselineskip}	
+	
+	Стоит отметить, что правило SFINAE появилось не само собой, а исходя из необходимости решения следующей задачи:
+	
+	Пусть нужно написать две перегрузки для функции \mintinline{c++}{foo}. Первая принимает ссылку на контейнер, имеющий тип C, и итератор на его элемент. Вторая принимает ссылку на массив типа \mintinline{c++}{T} из \mintinline{c++}{N} элементов и указатель на его элемент (указатель на элемент массива фактически является его итератором). Объявление этих функций может выглядеть следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename C>
+	void foo(C& container, typename C::iterator) iter;
+	
+	template <typename T, size_t N>
+	void foo(T (&array)[N], T* iter);
+	\end{minted}
+	
+	Если бы правила SFINAE не существовала и ошибка в инстанцировании шаблона вела бы к ошибке компиляции, то ни одна из перегрузок не могла бы быть вызвана.
+	
+	В коде
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	vector <int> v;
+	foo(v, v.begin());
+	\end{minted}
+	
+	соответствующем вызову первой перегрузки, произойдёт ошибка вывода во второй перегрузке, так как не удаётся вывести \mintinline{c++}{N}.
+	
+	А в коде
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	int arr[50];
+	foo(a, a + 1);
+	\end{minted}
+	
+	соответствующем вызову второй перегрузки, произойдёт ошибка подстановки в первой перегрузке (не удавалось бы подставить \mintinline{c++}{typename C::iterator}, так как \mintinline{c++}{int (&) [50]::iterator} не существует)
+	
+	Таким образом, если бы ошибка вывода означала бы ошибку компиляции, оба эти вызова были бы ошибочны, в то время как создатели языка желали, чтобы каждый из вышеперечисленных вызовов приводил к вызову соответствуещей перегрузки. 
+	
+	\vspace{\baselineskip}	
+	
+	Отметим, что хотя в контексте этого правила ошибки подстановки и вывода ведут себя одинаково (какая бы из них не произошла, шаблон функции просто не будет добавлен в список кандидатов), в общем случае это разные ошибки.
+	
+	Например, в следующем коде:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T x, T y)
+	{
+	    ///Тело функции
+	}
+	
+	f(5, vector<int>());
+	\end{minted}
+	
+	Происходит ошибка вывода, так как неизвестно, в какой тип вывести T.
+	
+	А в коде:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T::size_type x = 0)
+	{
+	    ///Тело функции
+	}
+	
+	f<int>();
+	\end{minted}
+	
+	Происходит ошибка подстановки так как тип \mintinline{c++}{T} известен, но \mintinline{c++}{int::size_type} не существует, следовательно, невозможно подставить типы параметров в сигнатуру шаблона.
+	
+	Отметив это соображение, вернёмся к рассмотрению самого правила SFINAE.
+	
+	\vspace{\baselineskip}	
+	
+	При дедукции и подстановке параметров рассматривается исключительно сигнатура функции, её тело не анализируется. Иными словами, если при выводе и подстановке параметров шаблона ошибки не произошло, функция была добавлена в список кандидатов и оказалась самой подходящей, но в её теле содержалась ошибка, компилятор поймёт это уже на этапе вызова и завершит компиляцию с ошибкой. Правило SFINAE работает только при выводе параметров шаблона и учитывает только сигнатуру функции.
+
+	Например, если есть набор функций
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	void f(T x)
+	{
+	    x.method_that_T_does_not_have();
+	}
+
+	void f(double x)
+	{
+	    cout << x;
+	}
+	\end{minted}
+	
+	и вызвано f(1);
+	список кандидатов будет состоять из:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	void f<int> (int x);
+	void f(double x);
+	\end{minted}
+
+	Будет выбрана шаблонная функция, но при попытке скомпилировать вызов произойдёт ошибка, так как \mintinline{c++}{int} не имеет метода \mintinline{c++}{method_that_T_does_not_have;}
+	
+	\vspace{\baselineskip}	
+	
+	Важно учесть, что для шаблонных функций возвращаемное значения является частью сигнатуры.
+
+	Прежде чем перейти к подробному рассмотрению этого правила, хотелось бы отметить ещё раз, что это SFINAE работает только при составлении списка кандидатов при перегрузке функций и при анализе учитывается только сигнатура функции, без рассмотрения её тела.
+
+\subsection{Использование SFINAE}
+
+	Механизм SFINAE можно использовать для того, чтобы накладывать ограничения на типы параметров шаблона и вызывать необходимую перегрузку функции исходя из этих ограничений.
+	
+	Рассмотрим пример:
+
+	Пусть требуется написать функцию \mintinline{c++}{can_divide(a, b)}, которая принимает два параметра встроенного целочисленного типа и возвращет, можно ли безопасно разделить a на b (т.е. не возникает ли в процессе переполнения или деления на ноль). Здесь и в дальнейшем для простоты и без ограничения общности считаем, что в машине используется дополнение до двойки для представления знаковых чисел.
+	
+	Заметим, что эта функция будет по-разному выглядеть для знаковых и для беззнаковых числел.
+	
+	Для беззнаковых чисел необходимо проверить только что b $\neq$ 0. В случае же деления знаковых чисел может произойти переполнение, если a - минимально представимое значения данного типа (то есть $-2^n$), а b = -1. Тогда a / b = $2^n$, а это число непредставимо в данном типе при использовании дополнения до двойки, то есть происходит ошибка переполнения.
+	
+	Необходимо написать две перегрузки: для знаковых типов и для беззнаковых. Код должен выглядеть примерно таким образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	bool can_divide(T divident, T divisor) // for signed T
+	{
+		if (divisor == 0)
+		{
+			return false;
+		}
+		if (divisor == -1 && divident == std::numeric_limits<T>::min())
+		{
+			return false;
+		}
+		returun true;
+	}
+	
+	template <typename T>
+	bool can_divide(T divident, T divisor) // for unsigned T
+	{
+		return divisor != 0;
+	}
+	\end{minted}
+	
+	Перед програмистом стоит задача написания кода, который органичит вызов первой перегрузки только знаковыми значениями, а второй - только беззнаковыми. Такая задача может быть решена с использованияем правила SFINAE.
+	
+	Используем дополнительную структуру \mintinline{c++}{enable_signed} и \mintinline{c++}{enable_unsigned}. 
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	struct enable_signed;
+	
+	template <> 
+	struct enable_signed<int> { using type = bool; };
+	
+	template <> 
+	struct enable_signed<long> { using type = bool; };
+	
+	template <> 
+	struct enable_signed<long long> { using type = bool; };
+	
+	template <typename T>
+	struct enable_unsigned;
+	
+	template <> 
+	struct enable_unsigned<unsigned> { using type = bool; };
+	
+	template <> 
+	struct enable_unsigned<unsigned long> { using type = bool; };
+	
+	template <>
+	struct enable_unsigned<unsigned long long> { using type = bool; };
+	\end{minted}
+	
+	Инстанцирование \mintinline{c++}{enable_signed} с помощью параметризации любым типом, кроме \mintinline{c++}{int}, \mintinline{c++}{long} и \mintinline{c++}{long long} даст пусую структуру, а инстанцирование с помощью параметризации оним из вышеперечисленных типов даст структуру, имеющее внутреннее имя type, являющееся синнимом для \mintinline{c++}{bool}. Аналогично работает \mintinline{c++}{enable_unsigned}. Эта структура может быть применена для решения имеющейся задачи следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	typename enable_signed<T>::type can_divide(T divident, T divisor)
+	{
+		if (divisor == 0)
+		{
+			return false;
+		}		
+		if (divisor == -1 && divident == std::numeric_limits<T>::min())
+		{
+			return false;
+		}
+		returun true;
+	}
+	
+	template <typename T>
+	typename enable_unsigned<T>::type can_divide(T divident, T divisor)
+	{
+		return divisor != 0;
+	}
+	\end{minted}
+	
+	Рассмотрим процесс вызова
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	int a = ...
+	int b = ...
+	bool res = can_divide(a, b);
+	\end{minted}
+	
+	Рассмотрим процесс инстанцирования первой перегрузки.
+	
+	T выводится в \mintinline{c++}{int}.
+	
+	\mintinline{c++}{enable_signed<int>} содержит имя type, являющееся синонимом для \mintinline{c++}{bool}. Тогда сигнатура первой перегрузки имеет вид:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	bool can_divide(T divident, T divisor);
+	\end{minted}
+	
+	Инстанцирование успешно, функция будет добавлена в список кандидатов.
+	
+	Рассмотрим процесс инстанцирования второй перегрузки.
+	
+	T выводится в \mintinline{c++}{int}.
+	
+	\mintinline{c++}{enable_unsigned<int>} является пустой структурой, следовательно, 
+	
+	\mintinline{c++}{typename enable_unsigned<int>::type} не существует, следовательно, при инстанцировании второй перегрузки происходит ошибка посдтановки, функция не будет добавлена в список кандидатов.
+	
+	Список кандидтов состоит из единственной функции (инстанцирования первой перегрузки для типа \mintinline{c++}{int}), которая и будет вызвана, как это и требуется.
+	
+	Аналогичным образом (но с противоположным результатом) код работает для беззнаковых типов (например, \mintinline{c++}{unsigned}).
+	
+	С помощью \mintinline{c++}{enable_signed} и \mintinline{c++}{enable_unsigned} можно как бы выключать некоторые перегрузки на этапе компиляции, в зависимости от известных на момент компиляции свойств типов.
+		
+	Решить поставленную задачу удалось, но это можно делать гораздо эффективнее, используя так называемые type-traits.
+	
+\subsection{type-traits}
+
+	Нет необходимости каждый раз при написании SFINAE-кода самостоятельно писать структуры, подобные \mintinline{c++}{enable_signed} и \mintinline{c++}{enable_unsigned}. Рассмотрим вспомогательную структуру, с помощью которой это можно делать гораздо легче.
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <bool condition, typename T = void>
+	struct enable_if {};
+	
+	template <typename T>
+	struct enable_if<true, T>
+	{
+		typedef type T;
+	};
+	\end{minted}
+	
+	Это шаблон класса, параметрами которого являются условие и некоторый тип, со специализацией для истинного значения условия. Если условие истинно, \mintinline{c++}{enable_if} определяет \mintinline{c++}{type}, являющийся синонимом для типа, переданного ему. Если условие ложно, то он не содержит ничего. 
+	
+	Подумаем, как можно написать функцию \mintinline{c++}{can_divide}, воспользовавшись данным классом. Необходимо с его помощью разрешить вызывать первую перегрузку только для знаковых типов (то есть запретить для всех остальных), и аналогично (но для беззнаковых типов) поступить со второй перегрузкой.
+	
+	Код, использующий \mintinline{c++}{enable_if} должен выглядеть примерно так:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	typename enable_if</*T - знаковый*/, bool>::type can_divide(T divident, T divisor)
+	{
+		if (divisor == 0)
+		{
+			return false;
+		}		
+		if (divisor == -1 && divident == std::numeric_limits<T>::min())
+		{
+			return false;
+		}
+		returun true;
+	}
+	
+	template <typename T>
+	typename enable_if</*T - беззнаковый*/, bool>::type can_divide(T divident, T divisor)
+	{
+		return divisor != 0;
+	}
+	\end{minted}
+	
+	Единственная сложность теперь состоит в том, чтобы узнать, является ли тип \mintinline{c++}{T} знаковым или беззнаковым. Для этого можно воспользоваться \mintinline{c++}{std::is_signed<T>} и \mintinline{c++}{std::is_unsigned<T>}. Эти две структуры (или type-traits, как их принято называть) содержат поля \mintinline{c++}{value}, имеющие тип \mintinline{c++}{bool}.
+	
+	\mintinline{c++}{std::is_signed<T> == true}, если тип \mintinline{c++}{T} является знаковым и \mintinline{c++}{false} иначе. \mintinline{c++}{std::is_unsigned<T>} работает с противоположным результатом.
+	
+	C их помощью написание функции \mintinline{c++}{can_divide} становится очевидным. Код выглядит следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	typename enable_if<std::is_signed<T>::value, bool>::type can_divide(T divident, T divisor)
+	{
+		if (divisor == 0)
+		{
+			return false;
+		}		
+		if (divisor == -1 && divident == std::numeric_limits<T>::min())
+		{
+			return false;
+		}
+		returun true;
+	}
+	
+	template <typename T>
+	typename enable_if<std::is_unsigned<T>::value, bool>::type can_divide(T divident, T divisor)
+	{
+		return divisor != 0;
+	}
+	\end{minted}
+	
+	Рассмотрим процесс вызова
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	int a = ...
+	int b = ...
+	bool res = can_divide(a, b);
+	\end{minted}
+	
+	Рассмотрим процесс инстанцирования первой перегрузки.
+	
+	T выводится в \mintinline{c++}{int}.
+	
+	\mintinline{c++}{std::is_signed<int>::value == true}, тогда \mintinline{c++}{enable_if<std::is_signed<int>::value, bool>} содержит имя \mintinline{c++}{type}, являющееся синонимом для \mintinline{c++}{bool}.
+	
+	Тогда после вывода и подстановки типов сигнатура первой перегрузки имеет вид:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	bool can_divide(T divident, T divisor);
+	\end{minted}
+	
+	Инстанцирование успешно, функция будет добавлена в список кандидатов.
+	
+	Рассмотрим процесс инстанцирования второй перегрузки.
+	
+	T выводится в \mintinline{c++}{int}.
+	
+	\mintinline{c++}{std::is_signed<int>::value == false}, поэтому \mintinline{c++}{enable_if<std::is_signed<int>::value, bool>} является пустой структурой и не содержит имени \mintinline{c++}{type}, следовательно, при инстанцировании второй перегрузки происходит ошибка посдтановки, функция не будет добавлена в список кандидатов.
+	
+	Список кандидтов состоит из единственной функции (инстанцирования первой перегрузки для типа \mintinline{c++}{int}), которая и будет вызвана, как это и требуется.
+	
+	Аналогичным образом (но с противоположным результатом) код работает для беззнаковых типов (например, \mintinline{c++}{unsigned}).
+	
+	\vspace{\baselineskip}
+	
+	Отметим, что очень много type traits (в том числе названные выше, в том числе \mintinline{c++}{enable_if} ) есть в стандартной библиотеке, в файле \mintinline{c++}{type_traits.h}.
+	
+	Многие type traits (например, \mintinline{c++}{is_trivially_copiable}, \mintinline{c++}{is_trivially_destructible}, \mintinline{c++}{is_integral} и т.д) не могут быть написаны стандартными средствами языка и реализованы с помощью информации, доступной только компилятору. Мы не можем написать их, поэтому нам остаётся только использовать уже написанные разработчиками компиляторов.
+	
+	\vspace{\baselineskip}
+	
+	Некоторые type traits могут быть реализованы с помощью средств языка, доступных любому программисту. Рассмотрим задачу написания структуры \mintinline{c++}{is_same<T1, T2>}, содержащей поле \mintinline{c++}{value} типа \mintinline{c++}{bool} являющееся \mintinline{c++}{true}, если \mintinline{c++}{T1} и \mintinline{c++}{T2} совпадают и \mintinline{c++}{false} иначе. Эта задача может быть решена следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T1, typename T2>
+	struct is_same
+	{
+		static const bool value = false;
+	};
+	
+	template <typename T>
+	struct is_same<T, T>
+	{
+		static const bool value = true;
+	};
+	\end{minted}
+	
+\subsection{Различные способы использования SFINAE}
+
+	До сих пор в данной статье рассматривалось только использование SFINAE с помощью изменения типа возвращаемого значения функции 
+	
+	(например, с \mintinline{c++}{bool} на \mintinline{c++}{enable_if<some_condition, bool>::type}).
+	
+	Это не единственный способ использование SFINAE. Кроме него возможно использовать SFINAE с помощью введения доволнительного параметра шаблона и с помощью введения дополнительного параметра функции.
+	
+	Рассмотрим задачу написания функции \mintinline{c++}{is_negative(x)}, которая возвращает, является ли \mintinline{c++}{x} отрицательным числом.
+	
+\subparagraph{Использование SFINAE с помощью введения дополнительного параметра шаблона}
+
+	Например, функця может быть написана следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T, typename FOR_SFINAE = typename enable_if<std::is_signed<T>::value>::type>
+	bool is_negative(T x)
+	{
+		return x < 0;
+	}
+	\end{minted}
+	
+	Заметим, что тип \mintinline{c++}{void} вторым параметром в \mintinline{c++}{enable_if} можно не указывать, так как в определении \mintinline{c++}{enable_if} \mintinline{c++}{void} является параметром по умолчанию.
+	
+	Рассмотрим вызов функции с аргументом, являющимся знаковым числом
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	int x = ...
+	is_negative(x);
+	\end{minted}
+	
+	\mintinline{c++}{T} выводится как \mintinline{c++}{int}
+	
+	\mintinline{c++}{std::is_signed<int>::value == true}, тогда \mintinline{c++}{enable_if<std::is_signed<int>::value>} содержит имя \mintinline{c++}{type}, являющееся синонимом для \mintinline{c++}{void}.
+	
+	Сигнатура функции выглядит следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	bool is_negative<int, void>(int x);
+	\end{minted}
+	
+	Вывод типов и подстановка успешны, функция будет добавлена в список кандидатов и будет вызвана, как единственная доступная функция.
+	
+	Рассмотрим вызов функции с аргументом, не являющимся знаковым числом
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	unsigned x = ...
+	is_negative(x);
+	\end{minted}
+	
+	\mintinline{c++}{T} выводится как \mintinline{c++}{unsigned}
+	
+	\mintinline{c++}{std::is_signed<unsigned>::value == false}, тогда \mintinline{c++}{enable_if<std::is_signed<unsigned>::value>} является пустой структурой и не содержит имя \mintinline{c++}{type}, тогда невозможно подставить параметр шаблона \mintinline{c++}{FOR_SFINAE}.
+	
+	Происходит ошибка подстановки, функция не будет добавлена в список кандидатов.
+	
+	\vspace{\baselineskip}
+	
+	Этот метод имеет важный недостаток: параметры шаблона по умолчанию не являются частью сигнатуры функции. 
+	
+	Например, пусть необходимо написать перегрузку функции \mintinline{c++}{is_negative} для беззнаковых типов. С использованием дополнительного параметра шаблона она могла бы выглядеть так:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T, typename FOR_SFINAE = typename enable_if<std::is_unsigned<T>::value>::type>
+	bool is_negative(T x)
+	{
+		return false;
+	}
+	\end{minted}
+	
+	Мы понимаем, что это две разные функции, применяемые в разных случаях (тип является либо знаковым, либо беззнаковым, он не может быть одновременно и таким и таким). Но параметр шаблона \mintinline{c++}{FOR_SFINAE}  - параметр шаблона по умолчанию, следовательно, он не является частю сигнатуры функции и две эти функции считаются компилятором одинаковыми, происходит ошибка компиляции. Поэтому в случае наличия двух и более перегрузок функции использование SFINAE с помощью введения дополнительного параметра шаблона недопустимо.
+	
+\subparagraph{Использование SFINAE с помощью параметра функции \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ }
+
+	
+	Задача определения, является ли число отрицательным, может быть решена и следующим способом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	bool is_negative(T x, typename enable_if<is_signed<T>::value>::type* = nullptr)
+	{
+		return x < 0;
+	}
+	\end{minted}
+	
+	Рассмотрим вызов функции с аргументом, являющимся знаковым числом
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	int x = ...
+	is_negative(x);
+	\end{minted}
+	
+	\mintinline{c++}{T} выводится как \mintinline{c++}{int}
+	
+	\mintinline{c++}{std::is_signed<int>::value == true}, тогда \mintinline{c++}{enable_if<std::is_signed<int>::value>} содержит имя \mintinline{c++}{type}, являющееся синонимом для \mintinline{c++}{void}.
+	
+	Сигнатура функции выглядит следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	bool is_negative<int>(int x, void* = nullptr);
+	\end{minted}
+	
+	Вывод типов и подстановка успешны, функция будет добавлена в список кандидатов и будет вызвана, как единственная доступная функция.
+	
+	Рассмотрим вызов функции с аргументом, не являющимся знаковым числом
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	unsigned x = ...
+	is_negative(x);
+	\end{minted}
+	
+	\mintinline{c++}{T} выводится как \mintinline{c++}{unsigned}
+	
+	\mintinline{c++}{std::is_signed<unsigned>::value == false}, тогда \mintinline{c++}{enable_if<std::is_signed<unsigned>::value>} является пустой структурой и не содержит имя \mintinline{c++}{type}, тогда невозможно подставить тип параметра \mintinline{c++}{typename enable_if<is_signed<unsigned>>::type*}
+	
+	Происходит ошибка подстановки, функция не будет добавлена в список кандидатов.
+	
+	\vspace{\baselineskip}
+	
+	Преимуществом такого способа является возможность написания нескольких перегрузок одной функции (например, для знаковых и для беззнаковых типов). Перегрузка для беззнаковых типов могла бы выглядеть так:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	bool is_negative(T x, typename enable_if<is_unsigned<T>::value>::type* = nullptr)
+	{
+		return false;
+	}
+	\end{minted}
+	
+	Использование двух этих перегрузок является корректным, ошибки не происходит.
+	
+	\vspace{\baselineskip}
+	
+	Недостатком этого способа является невыводимость контекста в \mintinline{c++}{enable_if} в некоторых случаях. Рассмотрим, например, код:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	bool is_negative(typename enable_if<std::is_signed<T>::value, T>::type x)
+	{
+		return x < 0;
+	}
+	\end{minted}
+	
+	В таком случае при попытке вызова
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	int x = ...
+	is_negative(x);
+	\end{minted}
+	
+	Попытка вывести типы окончится неудачей. Это происходит из-за невыводимости контекста в \mintinline{c++}{enable_if}. Иными словами, компилятор знает, какой тип должен иметь 
+	
+	\mintinline{c++}{typename enable_if<std::is_signed<T>::value, T>::type} (это должен быть тип \mintinline{c++}{int}), но он не способен подобрать такой тип \mintinline{c++}{T}, чтобы \mintinline{c++}{typename enable_if<std::is_signed<T>::value, T>::type} было синонимом для \mintinline{c++}{int}. Данная задача для компилятора неразрешима, это и называется невыводимостью контекста.
+	
+	Таким образом, иногда вывод типов с использованием \mintinline{c++}{enable_if} будет невозможен.
+	
+\subparagraph{Использование SFINAE с помощью модификации типа возвращаемого значения \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ }
+
+	Этот способ уже был рассмотрен выше. Единственным его недостатком является невозможность его использования в конструкторах, так как конструкторы не имеют типа возвращаемого значения.
+	
+	В некоторых случаях этот недостаток может быть обойдён с помощью введения дополнительной функции.
+	
+	Рассмотрим задачу конструирования класса \mintinline{c++}{my_class}. Задача состоит в том, чтобы класс мог конструироваться от знаковых и беззнаковых типов, имел шаблонный конструктор, и при конструировании писал, от знакового или беззнакового типа он конструируется.
+	
+	Класс должен выглядеть примерно следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	struct my_class
+	{
+		template <typename T>
+		my_class(T x) // для знаковых T
+		{
+			cout << "Constructed from signed"; 
+		}
+		
+		template <typename T>
+		my_class(T x) // для беззнаковых T
+		{
+			cout << "Constructed from unsigned"; 
+		}
+		... // Прочие функции и члены класса
+	}
+	\end{minted}
+	
+	Для решения этой задачи нужно ограничить конструктор с помощью SFINAE для знаковых и беззнаковых типов. На первый взгляд сделать это с помощью модификации возвращаемого значения невозможно, так как конструкторы не имеют возвращаемого значения.
+	
+	С другой стороны, можно написать функцию, конструирующую объект этого класса для знаковых и беззнаковых типов и выводящую необходимую строку на экран (эта функция будет написана с помощью модификации типа возвращаемого значения).
+	
+	В конструкторе можно сконструировать объект \mintinline{c++}{my_class}, использовав в качестве инициализатора возвращаемое функцией \mintinline{c++}{construct} значение.
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	struct my_class
+	{
+	private:
+		template <typename T>
+		typename enable_if<is_signed<T>::value, T>::type construct(T x)
+		{
+			cout << "Constructed from signed"; 
+			my_class temp = ...
+			return temp;
+			// конструирование и возврат объекта my_class 
+		}
+	
+		template <typename T>
+		typename enable_if<is_unsigned<T>::value, T>::type construct(T x)
+		{
+			cout << "Constructed from unsigned";
+			my_class temp = ...
+			return temp;
+			// конструирование и возврат объекта my_class 
+		}
+		
+	public:
+		template <typename T>
+		my_class(T x) : my_class(construct(x)) {}
+		
+	... // Прочие функции и члены класса
+	};
+	\end{minted}
+
+	\subsection{Пример использования SFINAE}
+	
+	Рассмотрим задачу написания деструктора класса \mintinline{c++}{vector<T>}. Как он должен быть написан? 
+	
+	Пусть вектор выделил кусок динамической памяти типа \mintinline{c++}{T* storage}, размер которого \mintinline{c++}{size_t} \mintinline{c++}{capacity}, а заполнено \mintinline{c++}{size_t size} элементов. Нужно пройтись циклом по заполненным элементам и вызвать на них деструкторы, чтобы гарантировать их корректное уничтожение (например, в векторе могут лежать классы, реализующие идиому RAII, уничтожение которых с помощью деструктора освобождает некий ресурс, так что уничтожение их без использования деструктора будет некорректно, так как захваченный ими ресурс останется неосвобождён).
+	
+	С другой стороны, возможна оптимизация: если деструктор типа \mintinline{c++}{T} тривиален, то нет смысла пробегаться по элементам вектора и вызывать их деструкторы, можно сразу удалить \mintinline{c++}{storage}.
+	 
+	Нельзя использовать SFINAE в самом деструкторе вектора, так как может существовать всего одна перегрузка деструктора. Следовательно, нужно в деструкторе вызывать перегруженную функцию. Необходимая перегрузка будет выбираться на основании информации о типе \mintinline{c++}{T}, которым параметризован \mintinline{c++}{vector<T>}.
+	 
+	Пусть деструктор вектора выглядит следующим образом:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	~vector()
+	{
+	    destroy_storage(storage);
+	}
+	\end{minted}
+	
+	Напишем две перегрузки для \mintinline{c++}{destroy_storage}: для тривиально и нетривиально уничтожаемых типов, воспользуемся \mintinline{c++}{is_trivially_destructible} из стандартной библиотеки, работающим подобно разобранным выше type-traits.
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename U>
+	typename enable_if<!is_trivially_destructible<U>::value>::type destroy_storage(U* _storage)
+	{
+	    for (size_t i = size; i > 0; i--)
+	    {
+	         data[i - 1].~U();
+	    }
+	    operator delete(storage);
+	}
+	\end{minted}
+	
+	Теперь можно написать перегрузку для типов с тривиальным деструктором
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename U>
+	typename enable_if<is_trivially_destructible<U>::value>::type destroy_storage(U* _storage)
+	{
+	    //типы тривиально удаляемые, нет смысла вызывать деструктор
+	    operator delete(storage);
+	}
+	\end{minted}
+	
+	Рассмотрим вызов деструктора вектора, параметризованного некоторым тривиально уничтожаемым типом, например, \mintinline{c++}{vector<int>}
+	
+	\mintinline{c++}{storage} имеет тип \mintinline{c++}{int*}
+	
+	Рассмотрим процесс инстанцирования первой перегрузки.
+	
+	\mintinline{c++}{U} выводится как \mintinline{c++}{int}
+	
+	\mintinline{c++}{int} тривиально уничтожаем, так что \mintinline{c++}{is_trivially_destructible<int>::value == true}
+	
+	\mintinline{c++}{!is_trivially_destructible<int>::value == false}
+	
+	\mintinline{c++}{enable_if<!is_trivially_destructible<int>::value>} является пустой структурой и не содержит имени type.
+	
+	При попытке подставить \mintinline{c++}{typename enable_if<!is_trivially_destructible<int>::value>::type} происходит ошибка подстановки, функция не будет добавлена в список кандидатов.
+	
+	\vspace{\baselineskip}		
+	
+	Рассмотрим процесс инстанцирования второй перегрузки..
+	
+	\mintinline{c++}{U} выводится как \mintinline{c++}{int}
+	
+	\mintinline{c++}{int} тривиально уничтожаем, так что \mintinline{c++}{is_trivially_destructible<int>::value == true}
+	
+	Тогда \mintinline{c++}{enable_if<is_trivially_destructible<int>::value>} содержит имя \mintinline{c++}{type}, являющееся синонимом для \mintinline{c++}{void}.
+	
+	Сигнатура функции послевывода и подстановки имеет вид:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename U>
+	void destroy_storage(int* _storage);
+	\end{minted}
+	
+	Все типы удалось вывести, функция будет добавлена в список кандидатов (и будет в нём единственной). Следовательно, именно она и будет вызвана в деструкторе.
+	
+	\vspace{\baselineskip}		
+	
+	Аналогично (но с противоположным результатом) происходит вызов \mintinline{c++}{desroy_storage} для какого-нибудь нетривиально уничтожаемого типа (например, \mintinline{c++}{std::shared_ptr<int>}).
+
+	\subsection{Дополнительные возможности SFINAE}
+	
+	Иногда полезно бывает вызвать одну из перегрузок функции в зависимости от того, есть ли в классе \mintinline{c++}{T} имя \mintinline{c++}{T::name}. Напишем метафункцию, которая будет это определять.
+
+	Основная идея такова: пусть у имеются две фукнции check\_name, одна из которых может принять значение типа \mintinline{c++}{typename T::name*}, а вторая принимает что угодно. Они должны возвращать значения разных типов, размеры которых не совпадают (например, \mintinline{c++}{int_16t} и \mintinline{c++}{int_32t})
+	
+	При отсутствии \mintinline{c++}{typename T::name} первая перегрузка будет отсечена по SFINAE, и, следовательно, недоступна, значит, будет выбрана вторая. При наличии \mintinline{c++}{typename T::name} будут доступны обе перегрузки, но выбрана должна быть первая (она должна обладать большим приоритетом). 
+
+	Тогда вызовем \mintinline{c++}{check_name(nullptr)}. Так как \mintinline{c++}{nullptr} может быть приведён к \mintinline{c++}{typename T::name*} (при наличии такого имени), должна быть вызвана первая перегрузка. Сравним размер значения, возвращаемого функцией \mintinline{c++}{check_name(nullptr)}. Если он равен размеру значения, возвращаемого первой перегрузкой, то может быть вызвана функция \mintinline{c++}{check_name(typename T::name*)}, следовательно, существует \mintinline{c++}{typename T::name}. Если же он равен размеру значения, возвращаемого второй перегрузкой, то такого имени не существует и функция не может быть вызвана.
+	
+	Как написать функцию, принимающую что угодно? Для этого можно воспользоваться конструкцией \mintinline{c++}{(...)}. Тогда перегрузки выглядят следующим образом:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	int_16t check_name(typename T::name*);
+
+	int_32t check_name(...);
+	\end{minted}
+	
+	Вторая перегрузка пока не отвечает нашим требованиям: она может принимать всё, что угодно, но обладает большим приоритетом, чем первая, и будет вызываться всегда (так как нешаблонная функция предпочитается шаблонной при прочих равных условиях).
+
+	Сделаем вторую функцию также шаблонной. Теперь функции выглядят так:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	int16_t check_name(typename T::name*);
+	
+	template <typename T>
+	int32_t check_name(...);
+	\end{minted}
+	
+	Теперь обе перегрузки отвечают нашим требованиям, то есть вторая принимает что угодно и имеет меньший приоритет, чем первая, и при наличии обеих перегрузок будет вызвана именно первая. Первая перегрузка отсекается по SFINAE при отсутствии \mintinline{c++}{typename T::name}.
+	
+	Тогда класс, проверяющий наличие имени, выглядит следующим образом:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	struct has_name
+	{
+	    //Используем явное указание типа шаблона, так как в противном случае
+	    //компилятор не сможет вывести самостоятельно для второй перегрузки,
+	    //так как неизвестны типы принимаемых ей параметров
+	    static const bool value = sizeof(check_name<T>(nullptr) == sizeof(int16_t));
+	};
+	\end{minted}
+
+	Заметим, что нет необхоимости писать тела функций, так как \mintinline{c++}{sizeof} не вычисляет значение указанного внутри выражения, а только возвращает размер его типа.
+	
+	Напишем две перегрузки функций, работаюих по-разному, в зависимости от наличия в \mintinline{c++}{T} имени \mintinline{c++}{name}.
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	typename enable_if<has_name<T>::value>::type use_name(T const& x)
+	{
+	    cout << "Has name" << endl;
+	}
+
+	template <typename T>
+	typename enable_if<!has_name<T>::value>::type use_name(T const& x)
+	{
+	    cout << "A type has no name" << endl;
+	}
+	\end{minted}
+	
+	\vspace{\baselineskip}	
+	Научимся проверять существование в типе необходимой функции.
+	
+	Пусть требуется проверить, есть ли в типе \mintinline{c++}{T} функция \mintinline{c++}{f}, которая может принять \mintinline{c++}{int}. Воспользуемся методом из предыдущей проверки, немного модернизировав его.
+
+	Изменим первую перегрузку. Заведём пустой тип
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <int N>
+	struct integral_constant {};
+	\end{minted}
+	
+	Будем параметризовать его размером результата вызова \mintinline{c++}{f(int)}. Если такой вызов может быть осуществлён, то параметризация \mintinline{c++}{integral_constant} будет успешна, ошибки инстанцирования шаблона не произойдёт и будет вызвана первая перегрузка.
+	
+	 Если же такой функции нет, то размер результата вызова \mintinline{c++}{f(int)} неизвестен, \mintinline{c++}{integral_constant} не сможет быть параметризована этим размером, и будет вызывна вторая перегрузка.
+	 
+	 Тогда первая перегрузка выглядит следующим образом:
+	  
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	int16_t has_f_help(integral_constant<sizeof(/*размер вызова T::f(int)*/)>*);
+	\end{minted}
+	
+	Размер вызова \mintinline{c++}{T::f(int)} может быть получен как \mintinline{c++}{sizeof(T().f(42))}. Тогда код будет выглядеть так:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	int16_t has_f_help(integral_constant<sizeof(T().f(42))>*);
+	\end{minted}
+	
+	У этого метода есть два недостатка. Во-первых, тип \mintinline{c++}{T} может не иметь конструктора по умолчанию, тогда конструкция \mintinline{c++}{T()} будет некорректна. Во-вторых, если бы вместо типа \mintinline{c++}{int} был бы какой-то другой тип, то вместо \mintinline{c++}{42} пришлось бы придумать какое-то типичное значение другого типа, а это не всегда возможно. Заметим, что обе эти проблемы можно решить с помощью функции \mintinline{c++}{std::declval<U>}, возвращающей какое-то значение типа, переданного ей в качестве шаблонного параметра. Перепишем код с использованием этой функции.
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <typename T>
+	int16_t has_f_help(integral_constant<sizeof(declval<T>().f(declval<int>()))>*);
+	\end{minted}
+	
+	Вторая перегрузка выглядит как же, как и раньше. Тогда код проверки и функций, использующих её, выглядит следующим образом:
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <int N>
+	struct integral_constant{};
+
+	template <typename T>
+	int16_t has_f_help(integral_constant<sizeof(declval<T>().f(declval<int>()))>*);
+
+	template <typename T>
+	int32_t has_f_help(...);
+
+	template <typename T>
+	struct has_f
+	{
+	    static const bool value = sizeof(has_f_help<T>(nullptr)) == sizeof(int16_t);
+	};
+
+
+	template <typename T>
+	typename enable_if<has_f<T>::value>::type check_f(T const& x)
+	{
+	    cout << "Has f" << endl;
+	}
+
+	template <typename T>
+	typename enable_if<!has_f<T>::value>::type check_f(T const& x)
+	{
+	    cout << "No f" << endl;
+	}
+	\end{minted}
+
+	\vspace{\baselineskip}
+
+	Заметим, что можно проверять существование в типе \mintinline{c++}{T} функции с данной сигнатурой (например, гарантировать существование функции \mintinline{c++}{int f(int)}, а не \mintinline{c++}{void f(int)} ). Для этого воспользуемся предыдущим методом и синтаксисом фуказателей на функции-члены.
+	
+	Модернизируем определённый ранее тип \mintinline{c++}{integral_const}, чтобы он содержал \mintinline{c++}{type}, являющийся синонимом для \mintinline{c++}{void}.
+
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <int N>
+	struct integral_constant
+	{
+	    typedef void type;
+	};
+	\end{minted}
+	
+	Теперь будем пытаться в первой перегрузке параметризовать \mintinline{c++}{integral_const} размером указателя на \mintinline{c++}{int T::f(int)}. Для проверки сигнатуры необходимо с помощью \mintinline{c++}{static_cast} конвертировать указатель на \mintinline{c++}{T::f} к типу \mintinline{c++}{int (T::*)(int)} (требуемая сигнатура). Параметром первой перегрузки станет 
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	typename integral_constant<sizeof(static_cast<int (T::*(int)>(&T::f))>::type*. 
+	\end{minted}
+	
+	Если такой функции в \mintinline{c++}{T} не существует, конвертирование будет неудачным, произойдёт ошибка подстановки и первая перегрузка не будет добавлена в список кандидатов. В случае же существования функции с такой сигнатурой, тип параметра первой перегрузки удастся вывести (это будет \mintinline{c++}{void*} ), и даная перегрузка сможет быть вызвана с аргументом \mintinline{c++}{nullptr}.
+	
+	Итоговый код выглядит следующим образом:
+	
+	\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+	template <int N>
+	struct integral_constant
+	{
+	    typedef void type;
+	};
+
+	template <typename T>
+	int16_t has_f_help(typename intergal_constant<sizeof(static_cast<int (T::*)(int)>(&T::f))>::type*);
+
+	template <typename T>
+	int32_t has_f_help(...);
+
+	template <typename T>
+	struct has_f
+	{
+	    static const bool value = sizeof(has_f_help<T>(nullptr)) == sizeof(int16_t);
+	};
+
+	template <typename T>
+	typename enable_if<has_f<T>::value>::type check_f(T const& x)
+	{
+	    cout << "Has f" << endl;
+	}
+
+	template <typename T>
+	typename enable_if<!has_f<T>::value>::type check_f(T const& x)
+	{
+	    cout << "No f" << endl;
+	}
+	\end{minted}
+	

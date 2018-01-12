@@ -1,0 +1,508 @@
+\section{Задача Perfect forwarding}
+
+\subsection{Формулировка проблемы, попытки тривиального решения}
+
+Пусть имеется функция \mintinline{c++}{g}, принимающая параметр типа \mintinline{c++}{T}. Стоит задача написать функцию \mintinline{c++}{f}, которая примет тот же параметр типа \mintinline{c++}{T}, сделает с ним что-нибудь (пусть в нижеследующем примере, без ограничения общности, \mintinline{c++}{f} не делает ничего) и вызвать функцию \mintinline{c++}{g} с этим аргументом.
+
+Примером пары таких \mintinline{c++}{f} и \mintinline{c++}{g} могут служить \mintinline{c++}{std::make_unique<T>(params)} и конструктор \mintinline{c++}{T}.
+
+\mintinline{c++}{make_unique} сначала вызовет конструктор \mintinline{c++}{T} с заданными параметрами, а потом обернёт получившийся объект в \mintinline{c++}{unique_ptr}. В процессе передачи параметров объектов в конструктор требуется так называемый perfect forwarding.
+
+Первый вариант, который приходит на ум, выглядит следующим образом:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T x)
+{
+	g(x);
+}
+\end{minted}
+
+Этот способ имеет недостатки. Рассмотрим случай, при котором \mintinline{c++}{g} принимает параметры по неконстантной ссылке и меняет их. Тогда
+
+При вызове функции \mintinline{c++}{f} параметр \mintinline{c++}{x} будет проинициализирован копией аргумента вызова
+
+В \mintinline{c++}{g} будет передана ссылка на копию исходного аргумента
+
+В \mintinline{c++}{g} произойдёт изменение копии исходного аргумента, исходный аргумент же останется неизменным.
+
+Это не то поведение, которого мы ожидаем, так как \mintinline{c++}{g} должна изменить наш аргумент.
+
+Другое решение: заставить \mintinline{c++}{f} принимать параметр по константной ссылке
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T const& x)
+{
+	g(x);
+}
+\end{minted}
+
+При этом остаётся почти та же самая проблема: если \mintinline{c++}{g} принимает параметр по неконстантной ссылке, вызов будет невозможен (так как неконстантная ссылка не может быть инициализирована константной ссылкой)
+
+Третье решение: нужно заставить \mintinline{c++}{f} принимать параметры по неконстантной ссылке
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T& x)
+{
+	g(x);
+}
+\end{minted}
+
+Это будет проблемой при попытке вызвать \mintinline{c++}{f} для константных объектов или для rvalue, то есть вызовы \mintinline{c++}{f(5)} и \mintinline{c++}{f(some_function())} станут невозможны.
+
+Ни одно из приведённых выше решений не является универсальным. Возможно ли написать функцию \mintinline{c++}{f}, работающую во всех случаях?
+
+Можно сделать две перегрузки \mintinline{c++}{f}: для константных и неконстантных ссылок.
+
+\vspace{\baselineskip}
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T const& x)
+{
+	g(x);
+}
+
+template <typename T>
+void f(T& x)
+{
+	g(x);
+}
+\end{minted}
+
+На первый взгляд это решение кажется хорошим, но очень скоро становится понятно, что тогда в \mintinline{c++}{f} нужно будет написать в два раза больше кода. К тому же, если \mintinline{c++}{g} и \mintinline{c++}{f} принимают по два параметра, придётся писать уже четыре перегрузки:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T& a, T& b)
+
+template <typename T>
+void f(T const& a, T& b)
+
+template <typename T>
+void f(T& a, T const& b)
+
+template <typename T>
+void f(T const& a, T const& b)
+\end{minted}
+
+для трёх параметров - 8, а для n - $2^n$. Поэтому этот способ не применим для большого количества аргументов.
+
+Если же функция принимает неизвестное заранее количество параметров (например, в роли функции \mintinline{c++}{g} выступает конструктор неизвестного заранее типа \mintinline{c++}{T}, а в роли функции \mintinline{c++}{f} - функция \mintinline{c++}{make_unique}, как в примере выше, то такой код просто не может быть написан, так как на момент написания кода неизвестно количество параметров функций, а следовательно, неизвестно и количество необходимых перегрузок).
+
+Прежде чем рассматривать грамотное C++ 11 решение этой проблемы, необходимо ближе познакомиться с правилами вывода ссылок в C++ 11.
+
+
+\subsection{reference collapsing rule}
+
+Как известно, в C++ не существует ссылок на ссылки. В тех случаях, когда возникает такой тип (в параметра шаблона или в псевдонимах типов), ссылки схлопываются, то есть происходит reference collapsing, и получается просто одна ссылка. Например:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T> 
+f(T & x);
+
+int x = 5;
+f<int&>(x);
+\end{minted}
+
+В качестве \mintinline{c++}{T} подставляется \mintinline{c++}{int&}. При этой подстановке вместо \mintinline{c++}{T&},  должна была бы получится ссылка на ссылку \mintinline{c++}{int& &}, но происходит reference collapsing и получается просто \mintinline{c++}{int&}. Следовательно сигнатура функции \mintinline{c++}{f} после подстановки выглядит следующим образом: \mintinline{c++}{f<int&>(int& x)}.
+
+Неформально правило reference collapsing в C++03 можно записать в следующем виде \mintinline{c++}{& + & = &}
+
+С появлением в C++11 rvalue-ссылок потребовалось доопределить правила reference collapsing для них. Эти правила могут быть неформально записаны как “одиночный амперсант всегда побеждает”. Таким образом, таблица reference collapsing в C++ 11 выглядит так:
+
+\mintinline{c++}{& + & = &}
+
+\mintinline{c++}{& + && = &}
+
+\mintinline{c++}{&& + & = &}
+
+\mintinline{c++}{&& + && = &&}
+
+Приведём несколько примеров этого правила:
+
+\begin{center}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		template <typename T>
+		void f(T& x);
+		
+		int y;
+		f<int&&>(y);
+		\end{minted}
+		&
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		template <typename T>
+		void f(T&& x);
+		
+		f<int&&>(some_function());
+		//some_function возвращает int
+		\end{minted}
+	\end{tabular}
+	
+	Тогда при инстанцировании шаблона вместо \mintinline{c++}{T} подставляется \mintinline{c++}{int&&}, сигнатура функции имеет вид
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int&&>(int&& & x);
+		\end{minted}
+		&
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int&&>(int&& && x);
+		\end{minted}
+	\end{tabular}
+	
+	После reference collapsing она превращается в:
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int&&>(int& x);
+		\end{minted}
+		&
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int&&>(int&& x);
+		\end{minted}
+	\end{tabular}
+\end{center}
+
+\subsection{Правила особого вывода ссылок}
+
+Пусть есть конструкция
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void func(T&& x);
+\end{minted}
+
+Пусть есть вызов \mintinline{c++}{func(expression)}, \mintinline{c++}{expression} имеет тип \mintinline{c++}{E}. Тогда если \mintinline{c++}{expression} является lvalue, \mintinline{c++}{T} выводится как \mintinline{c++}{E&}, если же \mintinline{c++}{expression} является rvalue, то \mintinline{c++}{T} выводится как \mintinline{c++}{E}\footnote{%
+	Отметим, что переменная типа \mintinline{c++}{T&&}, использованная в функции выше, не всегда является rvalue-ссылкой, и называть её rvalue-ссылкой некорректно. В книге Скота Майерса “Эффективный и современныи С++” эти ссылки названы универсальными. Причины такого наименования станут ясны далее.}.
+
+Примеры:
+
+\begin{center}
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		lvalue: & rvalue:\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}{double pi = 3.14;}
+		& \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{func(pi);}
+		&
+		\mintinline{c++}{func(4);}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{pi} - lvalue типа \mintinline{c++}{double}, \mintinline{c++}{T} выводится как \mintinline{c++}{double&}, сигнатура \mintinline{c++}{func} имеет вид:
+		&
+		4 - rvalue типа \mintinline{c++}{int}, тогда \mintinline{c++}{T} выводится как \mintinline{c++}{int}, сигнатура \mintinline{c++}{func} имеет вид: \\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void func<double&>(double& &&);
+		\end{minted}
+		&
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void func<int>(int&&);
+		\end{minted} 
+		\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		после reference collapsing она приобретает вид: & \vspace{\baselineskip} \\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void func<double&>(double&);
+		\end{minted}
+		& \vspace{\baselineskip} \\
+	\end{tabular}
+	
+\end{center}
+
+
+\vspace{\baselineskip}
+
+Эти правила применяются для реешения проблемы perfect forwarding.
+
+\subsection{Решение проблемы perfect forwarding}
+
+Рассмотрим код способа передачи аргумента в \mintinline{c++}{g}:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T&& x)
+{
+	//Как можно передать x в g?
+	g(x); //передать как lvalue
+	g(std::move(x)); //передать как rvalue
+}
+\end{minted}
+
+Ни один ни другой способ не подходит. \mintinline{c++}{x} должно передаваться так же, как получается, то есть поставлена задача сохранения value-category: пришедшее как rvalue значение, должно быть передано как rvalue, а пришедшее как lvalue должно быть передано как lvalue.
+
+Рассмотрим вспомогательную функцию, с помощью которой эта задача будет выполняться.
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename U>
+U&& forward(U& a)
+{
+	return static_cast<U&&>(a);
+}
+\end{minted}
+
+Тогда код, использующий её, будет выглядеть так
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T&& a)
+{
+	g(forward<T>(a));
+}
+\end{minted}
+
+Данная функция реализует perfect forwarding. Чтобы убедиться в этом рассмотрим процесс вызова f для rvalue и lvalue и посмотрим на процесс вывода и подстановки аргументов шаблона.
+
+\begin{center}
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		lvalue: & rvalue:\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{int a}; & \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{f(a)}; & \mintinline{c++}{f(42)};\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{a} - lvalue типа \mintinline{c++}{int}, поэтому \mintinline{c++}{T} выводится в \mintinline{c++}{int&}, тогда после подстановки, до применения reference collapsing \mintinline{c++}{f} выглядит так: & \mintinline{c++}{42} - rvalue типа \mintinline{c++}{int}, следовательно \mintinline{c++}{Т} выводится в \mintinline{c++}{int}, а после подстановки \mintinline{c++}{f} выглядит так:\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int&>(int& && a)
+		{
+		    g(forward<int&>(a));
+		}
+		\end{minted}
+		&
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int>(int&& a)
+		{
+		    g(forward<int>(a));
+		}
+		\end{minted}
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		После применения reference collapsing, она будет выглядеть так:
+		& \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int&>(int& a)
+		{
+		    g(forward<int&>(a));
+		}
+		\end{minted}
+		& \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		В \mintinline{c++}{forward} в качестве \mintinline{c++}{U} передают \mintinline{c++}{int&} (явно, в треугольных скобочках). Таким образом после подстановки \mintinline{c++}{forward} выглядит так:
+		& В \mintinline{c++}{forward} в качестве \mintinline{c++}{U} передают \mintinline{c++}{int} (явно, в треугольных скобочках), и после подстановки \mintinline{c++}{forward} выглядит так:
+		\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		int& && forward<int&>(int& & a)
+		{
+		    return 
+		        static_cast<int& &&>(a);
+		}
+		\end{minted}
+		& \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		int&& forward<int>(int& a)
+		{
+		    return static_cast<int&&>(a);
+		}
+		
+		\end{minted}
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		После reference collapsing сигнатура функции принимает вид: & \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		int& forward<int&>(int& a)
+		{
+		    return static_cast<int&>(a);
+		}
+		\end{minted}
+		& \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		Заметим, что эта функция не делает ничего, а просто кастит \mintinline{c++}{int&} к \mintinline{c++}{int&}. Поскольку \mintinline{c++}{forward} возвращает \mintinline{c++}{int&}, то результат его вызова - lvalue.Значит \mintinline{c++}{f} передаёт свой аргумент в \mintinline{c++}{g} как lvalue. Заметим, что изначально в \mintinline{c++}{f} a пришла как lvalue. Значит, для lvalue передача работает корректно. & Заметим, что в данном случае функция \mintinline{c++}{forward} работает как \mintinline{c++}{move}(приводит lvalue-ссылку к rvalue-ссылке). Результат вызова функции \mintinline{c++}{forward} является \mintinline{c++}{int&&}, а \mintinline{c++}{int&&}, возвращённая из функции, является rvalue, то есть результат применения \mintinline{c++}{forward} является rvalue. То есть \mintinline{c++}{f} передаёт \mintinline{c++}{a} как rvalue. Заметим, что получала \mintinline{c++}{f} этот параметр тоже как rvalue, значит, для rvalue передача работает корректно.\\
+	\end{tabular}
+	
+\end{center}
+
+Итого, удалось сохранить value-category. \mintinline{c++}{forward} работает либо как ничего (если ей передано lvalue), либо как \mintinline{c++}{move}(если ей передано rvalue).
+
+\subsection{Одна частая ошибка при использовани forward}
+Иногда при вызове \mintinline{c++}{forward} забывают указать параметр шаблона в треугольных скобках. Выглядит это так:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+void f(T&& a)
+{
+	g(forward(a));
+}
+
+
+\end{minted}
+
+Покажем, почему это ошибка и как от неё избавиться. Расмотрим вызовы для lvalue и rvalue.
+
+\begin{center}
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		lvalue: & rvalue:\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{int a}; & \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{f(a);} & \mintinline{c++}{f(42);}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\mintinline{c++}{a} - lvalue типа \mintinline{c++}{int}, поэтому \mintinline{c++}{T} выводится в \mintinline{c++}{int&}, тогда после подстановки, до применения reference collapsing \mintinline{c++}{f} выглядит так: & 42 - rvalue типа \mintinline{c++}{int}, следовательно \mintinline{c++}{T} выводится в \mintinline{c++}{int}, а после подстановки \mintinline{c++}{f} выглядит так:\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f(int& && a)
+		{
+		    g(forward(a));
+		}
+		\end{minted}
+		&
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f<int>(int&& a)
+		{
+		    g(forward(a));
+		}
+		
+		\end{minted}
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		После применения reference collapsing, она будет выглядеть так:
+		& \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		void f(int& a)
+		{
+		    g(forward(a));
+		}
+		\end{minted}
+		& \vspace{\baselineskip}\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		Типы для \mintinline{c++}{forward} выводятся следующим образом:
+		\mintinline{c++}{a} имеет тип \mintinline{c++}{int&}, а \mintinline{c++}{forward} принимает \mintinline{c++}{U&}, таким образом, \mintinline{c++}{U} выводится как \mintinline{c++}{int}. Тогда \mintinline{c++}{forward} выглядит следующим образом::
+		& \mintinline{c++}{U} выводится как \mintinline{c++}{int&&}, тогда вместо \mintinline{c++}{U&} подставляется \mintinline{c++}{int&& &} (сжимается в \mintinline{c++}{int&&)}, а вместо \mintinline{c++}{U&&} подставляется \mintinline{c++}{int&& &&} (сжимается в \mintinline{c++}{int&&)} Тогда \mintinline{c++}{forward} выглядит следующим образом:
+		\\
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		int&& forward(int& a)
+		{
+		    return static_cast<int&&>(a);
+		}
+		
+		\end{minted}
+		& \begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 0, breaklines]{c++}
+		int&& forward(int& a)
+		{
+		    return static_cast<int&&>(a);
+		}
+		
+		
+		\end{minted}
+	\end{tabular}
+	
+	\begin{tabular}{p{0.4\linewidth}p{0.4\linewidth}}
+		То есть \mintinline{c++}{forward} для lvalue работает как \mintinline{c++}{move}, а должен рабоать как ничего. & Таким образом, для rvalue \mintinline{c++}{forward} тоже сработает как \mintinline{c++}{move}.\\
+	\end{tabular}
+	
+\end{center}
+
+Получается что, если в \mintinline{c++}{forward} не указать параметр в треугольных скобках, то он всегда будет работать как \mintinline{c++}{move}.
+
+Как можно решить эту проблему? Нужно запретить выводить тип для \mintinline{c++}{forward}, а позволить только явно указывать его. Рассмотрим вспомогательный класс.
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T>
+struct no_deduce
+{
+	typedef T type;
+}
+\end{minted}
+
+Тогда \mintinline{c++}{forward} с использованием этого класса выглядит следующим образом:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename U>
+U&& forward(typename no_deduce<U>::type& a)
+{
+	return static_cast<U&&>(a);
+}
+\end{minted}
+
+Заметим, что \mintinline{c++}{typename no_deduce<U>::type&} эквивалентно \mintinline{c++}{U&}.
+
+Эта конструкция запрещает вывод типов, так как при передаче значения в функцию требуется вывести не \mintinline{c++}{U&}, а \mintinline{c++}{typename no_deduce<U>::type&}, а это невыводимый контекст. Компилятор может определить, каким типом должен быть \mintinline{c++}{typename no_deduce<U>::type} (пусть он должен иметь тип \mintinline{c++}{E}), но он не способен вывести тип \mintinline{c++}{U}, чтобы \mintinline{c++}{typename no_deduce<U>::type} имел тип \mintinline{c++}{E} (В данном конкретном случае это сделать можно (\mintinline{c++}{U} должен совпадать с \mintinline{c++}{E}), но в общем случае такая задача неразрешима, поэтому компилятор C++ не выводит типы в таких случаях).
+
+Проблема решена.
+
+Отметим напоследок, что \mintinline{c++}{forward} есть в стандартной библиотеке.
+
+\subsection{Использование perfect forwarding}
+
+Perfect forwarding используется, например, при использовании функций высшего порядка - то есть функций, принимающих другие функции в качестве аргументов или возвращающих их в качестве возвращаемого значения.
+
+Без perfect forwarding, применение функций высшего порядка довольно обременительно, так как нет удобного способа передать аргументы в функцию внутри функции-обертки.
+Возвращаясь к примеру, изложенному в начале главы, функцию-обёртку над конструктором типа \mintinline{c++}{T make_unique} с использованием perfect forwarding  можно реализовать следующим образом:
+
+\begin{minted}[linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
+template <typename T, typename… Args>
+//тип T - тип, обёртываемый в unique_ptr, Args - типы аргументов конструктора.
+unique_ptr<T> make_unique(Args&&... args)
+{
+	return unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+\end{minted}
+
+Про используемые в коде variadic template можно подробнее узнать в следующей главе.
