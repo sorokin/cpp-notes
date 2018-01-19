@@ -213,13 +213,13 @@ T abs(T value)
 Полностью корректная версия должна содержать SFINAE-проверку:
 \begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 template <typename T>
-decltype(enable_if<is_signed<T>::value>::type, T) abs(T value)
+enable_if<is_signed<T>::value, T>::type abs(T value)
 {
 	return (value < 0 ? -value : value);
 }
 
 template <typename T>
-decltype(enable_if<is_unsigned<T>::value>::type, T) abs(T value)
+enable_if<is_unsigned<T>::value, T>::type abs(T value)
 {
 	return value;
 }
@@ -251,7 +251,7 @@ constexpr float y = pi<float>;
 Рассмотрим на примере \texttt{is\_same}:
 \begin{minted} [linenos, frame=lines, framesep=2mm, tabsize = 4, breaklines]{c++}
 template <typename T, typename U>
-constexpr bool is_same_v = is_same<U, V>::value;
+constexpr bool is_same_v = is_same<T, U>::value;
 \end{minted}
 Теперь вместо \texttt{is\_same<T, U>::value} можем писать просто \texttt{is\_same\_v<T, U>}. \\\\
 В C++14 все метафункции, возвращающие значение, имеют соответствующие шаблонные переменные с суффиксом \texttt{\_v}.
